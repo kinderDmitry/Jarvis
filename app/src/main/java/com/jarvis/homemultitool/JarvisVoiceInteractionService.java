@@ -9,7 +9,6 @@ import android.view.WindowManager;
 public class JarvisVoiceInteractionService extends VoiceInteractionService {
     @Override public void onReady() {
         super.onReady();
-        try { setInvocationEffectEnabled(true); } catch (Throwable ignored) {}
     }
 
     @Override public void onLaunchVoiceAssistFromKeyguard() {
