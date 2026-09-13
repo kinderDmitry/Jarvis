@@ -9,6 +9,7 @@
         <item name="android:colorAccent">#5CE0FF</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">#01050B</item>
+        <item name="android:windowBackground">#02070D</item>
+        <item name="android:navigationBarDividerColor">#02070D</item>
     </style>
 </resources>
