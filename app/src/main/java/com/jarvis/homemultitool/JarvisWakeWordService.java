@@ -35,7 +35,11 @@ public class JarvisWakeWordService extends Service {
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+            recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+        } else {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        }
         recognizer.setRecognitionListener(new RecognitionListener() {
             public void onReadyForSpeech(android.os.Bundle b) {}
             public void onBeginningOfSpeech() {}

@@ -2,12 +2,10 @@ package com.jarvis.homemultitool;
 
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
-import android.os.Build;
+import android.os.Bundle;
 import android.service.voice.VoiceInteractionService;
-import android.view.WindowManager;
 
-/** Lightweight system-assistant entry point. */
+/** Lightweight system entry point. Heavy UI work is delegated to the session/activity. */
 public class JarvisVoiceInteractionService extends VoiceInteractionService {
     @Override public void onReady() { super.onReady(); }
 
@@ -17,12 +15,10 @@ public class JarvisVoiceInteractionService extends VoiceInteractionService {
     }
 
     @Override public void onLaunchVoiceAssistFromKeyguard() {
-        Intent i = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP |
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-        i.putExtra("LOCKSCREEN_ASSIST", true);
-        i.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        startActivity(i);
+        try {
+            showSession(new Bundle(), 0);
+        } catch (Throwable ignored) {
+            // Some OEMs do not allow session launch from this entry point; the session/activity path remains available.
+        }
     }
 }
