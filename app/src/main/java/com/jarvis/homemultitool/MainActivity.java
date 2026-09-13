@@ -116,20 +116,20 @@ public class MainActivity extends Activity {
         voiceRow.addView(button("■  СТОП",v->stopAll()),lp(0,54,8,0,0,0));page.addView(voiceRow,lp(-1,58,0,7,0,0));
         voiceHint=txt("МИКРОФОН ГОТОВ  •  НАЖМИТЕ ГОВОРИТЬ",9);voiceHint.setTextColor(MUTED);voiceHint.setGravity(Gravity.CENTER);voiceHint.setTypeface(Typeface.DEFAULT,Typeface.BOLD);page.addView(voiceHint,new LinearLayout.LayoutParams(-1,dp(22)));
 
-        LinearLayout command=new LinearLayout(this);command.setGravity(Gravity.CENTER_VERTICAL);
-        input=new EditText(this);input.setSingleLine(true);input.setTextColor(WHITE);input.setHintTextColor(MUTED);input.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,14);input.setHint("Спросить JARVIS…");input.setIncludeFontPadding(true);input.setGravity(Gravity.CENTER_VERTICAL);input.setPadding(dp(15),0,dp(8),0);input.setBackground(bg(BORDER,0xD9071420,18));input.setImeOptions(6);input.setOnEditorActionListener((v,a,e)->{sendText();return true;});command.addView(input,new LinearLayout.LayoutParams(0,dp(52),1));
-        TextView send=button("➤",v->sendText());send.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,21);command.addView(send,lp(58,52,8,0,0,0));page.addView(command,lp(-1,54,0,7,0,0));
-
-        LinearLayout quick=new LinearLayout(this);quick.setGravity(Gravity.CENTER_VERTICAL);addQuick(quick,"ВРЕМЯ","сколько времени");addQuick(quick,"ПОГОДА","какая сейчас погода в Москве");addQuick(quick,"ТАЙМЕР","таймер на 5 минут");page.addView(quick,lp(-1,50,0,5,0,0));
         setContentView(root);
 
         LinearLayout nav=new LinearLayout(this);nav.setGravity(Gravity.CENTER);nav.setPadding(dp(7),dp(6),dp(7),dp(6));nav.setBackground(bg(BORDER,0xF2071019,22));
         addNav(nav,"◉","JARVIS",true,v->scroll.smoothScrollTo(0,0));addNav(nav,"◌","ПАМЯТЬ",false,v->command("что ты помнишь"));addNav(nav,"⌁","ИНСТРУМЕНТЫ",false,v->showTools());addNav(nav,"⚙","НАСТРОЙКИ",false,v->openSettings());
         FrameLayout.LayoutParams np=new FrameLayout.LayoutParams(-1,dp(78),Gravity.BOTTOM);np.setMargins(dp(10),0,dp(10),dp(8));root.addView(nav,np);
+
+        LinearLayout composer=new LinearLayout(this);composer.setGravity(Gravity.CENTER_VERTICAL);composer.setPadding(0,0,0,0);
+        input=new EditText(this);input.setSingleLine(true);input.setTextColor(WHITE);input.setHintTextColor(MUTED);input.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,15);input.setHint("Спросить JARVIS…");input.setIncludeFontPadding(true);input.setGravity(Gravity.CENTER_VERTICAL);input.setPadding(dp(18),0,dp(12),0);input.setBackground(bg(BORDER,0xF2071420,20));input.setImeOptions(6);input.setOnEditorActionListener((v,a,e)->{sendText();return true;});
+        composer.addView(input,new LinearLayout.LayoutParams(0,dp(58),1));
+        TextView send=button("➤",v->sendText());send.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,22);send.setGravity(Gravity.CENTER);composer.addView(send,lp(60,58,9,0,0,0));
+        FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(58),Gravity.BOTTOM);cp.setMargins(dp(14),0,dp(14),dp(94));root.addView(composer,cp);
     }
 
     private LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(16),dp(11),dp(16),dp(11));c.setBackground(bg(BORDER,0xEF06131F,22));return c;}
-    private void addQuick(LinearLayout r,String title,String cmd){TextView b=button(title,v->command(cmd));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(46),1);p.setMargins(dp(3),0,dp(3),0);r.addView(b,p);}
     private void addNav(LinearLayout n,String icon,String label,boolean active,View.OnClickListener c){LinearLayout item=new LinearLayout(this);item.setOrientation(LinearLayout.VERTICAL);item.setGravity(Gravity.CENTER);item.setOnClickListener(c);TextView i=txt(icon,18);i.setGravity(Gravity.CENTER);i.setTextColor(active?CYAN:MUTED);item.addView(i,new LinearLayout.LayoutParams(-1,dp(28)));TextView t=txt(label,9);t.setGravity(Gravity.CENTER);t.setSingleLine(true);t.setEllipsize(android.text.TextUtils.TruncateAt.END);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setTextColor(active?WHITE:MUTED);item.addView(t,new LinearLayout.LayoutParams(-1,dp(18)));n.addView(item,new LinearLayout.LayoutParams(0,dp(54),1));}
 
     private void showTools(){
