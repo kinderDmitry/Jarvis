@@ -7,7 +7,7 @@ android {
         applicationId 'com.jarvis.homemultitool'
         minSdk 26
         targetSdk 35
-        versionCode 11
-        versionName '5.7.0-wow-voice-ui'
+        versionCode 12
+        versionName '5.8.0-professional-hud-voice'
     }
 }
