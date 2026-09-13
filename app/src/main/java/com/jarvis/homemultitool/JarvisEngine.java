@@ -40,7 +40,10 @@ public final class JarvisEngine {
         if(c.contains("сколько дней в году")){reply("В обычном году 365 дней, а в високосном — 366.");return;}
         if(c.contains("какая дата")||c.contains("какое сегодня число")||c.contains("сегодняшняя дата")){reply("Сегодня "+new SimpleDateFormat("d MMMM yyyy",new Locale("ru","RU")).format(new Date())+".");return;}
         if(c.contains("батаре")||c.contains("заряд")){android.os.BatteryManager bm=(android.os.BatteryManager)context.getSystemService(Context.BATTERY_SERVICE);int p=bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);reply("Заряд батареи: "+p+" процентов.");return;}
-        if(c.contains("таймер")){int seconds=parseDuration(c); if(seconds>0){TimerTool.start(context,seconds,cb);return;} reply("Скажите длительность, например: таймер на 15 минут.");return;}
+        if(c.contains("таймер")){
+            if(c.contains("отмени")||c.contains("отключи")||c.contains("сбрось")){TimerTool.cancel(context,cb);return;}
+            int seconds=parseDuration(c); if(seconds>0){TimerTool.start(context,seconds,cb);return;} reply("Назовите длительность: например, «Джарвис, поставь таймер на 15 минут».");return;
+        }
         if(c.contains("будильник")||c.contains("разбуди")){AlarmTool.schedule(context,c,cb);return;}
         if(c.contains("фонар")){toggleTorch();return;}
         if(c.contains("громк")||c.contains("звук")){adjustVolume(c);return;}
@@ -65,10 +68,12 @@ public final class JarvisEngine {
         web.search(original, new WebSearchEngine.Callback(){ public void result(String text,String source){reply((source==null||source.isEmpty())?text:text+"\n\nИсточник: "+source);} public void state(String state){cb.state(state);} });
     }
     private String extractCity(String q){
-        String x=q==null?"":""+q;
-        Matcher m=Pattern.compile("(?i)(?:в|для|города?)\\s+([А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,})").matcher(x);
-        if(m.find()) return m.group(1);
-        if(x.toLowerCase(new Locale("ru")).contains("москв")) return "Москва";
+        String x=q==null?"":q.trim();
+        String l=x.toLowerCase(new Locale("ru"));
+        if(l.contains("москв")) return "Москва";
+        if(l.contains("санкт-петербург")||l.contains("петербург")) return "Санкт-Петербург";
+        Matcher m=Pattern.compile("(?iu)(?:в|для|города?|городе)\\s+([А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,}(?:\\s+[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,})?)").matcher(x);
+        if(m.find()) return m.group(1).trim();
         return "Москва";
     }
     private void reply(String s){cb.reply(s);}
@@ -83,31 +88,28 @@ public final class JarvisEngine {
     public void shutdown(){web.shutdown();}
 
     static final class TimerTool {
+        private static final int TIMER_ID=78;
         static void start(Context c,int seconds,Callback cb){
             if(seconds<=0){cb.reply("Не удалось определить длительность таймера.");return;}
             try {
-                Intent timer=new Intent(AlarmClock.ACTION_SET_TIMER)
-                        .putExtra(AlarmClock.EXTRA_LENGTH,seconds)
-                        .putExtra(AlarmClock.EXTRA_SKIP_UI,true)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                if(c.getPackageManager().resolveActivity(timer,PackageManager.MATCH_DEFAULT_ONLY)!=null){
-                    c.startActivity(timer);
-                    cb.reply("Принято. Системный таймер установлен на "+format(seconds)+".");
-                    return;
-                }
-            } catch(Throwable ignored) { }
-            // Fallback: a real OS alarm, not an in-memory Handler. It survives app process death.
-            try {
                 AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
                 Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER").putExtra("duration",seconds);
-                PendingIntent pi=PendingIntent.getBroadcast(c,78,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+                PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
                 long at=System.currentTimeMillis()+seconds*1000L;
-                if(Build.VERSION.SDK_INT>=31 && am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);
-                else if(Build.VERSION.SDK_INT>=23) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi); else am.set(AlarmManager.RTC_WAKEUP,at,pi);
-                cb.reply("Принято. Системный таймер установлен на "+format(seconds)+".");
-            } catch(Throwable e){ cb.reply("Не удалось установить системный таймер. Разрешите JARVIS будильники и напоминания в настройках Android."); }
+                if(Build.VERSION.SDK_INT>=31 && !am.canScheduleExactAlarms()){
+                    c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    cb.reply("Android требует разрешение «Будильники и напоминания». После выдачи разрешения повторите команду — таймер будет установлен.");
+                    return;
+                }
+                if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);else am.setExact(AlarmManager.RTC_WAKEUP,at,pi);
+                c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().putLong("end",at).putInt("seconds",seconds).apply();
+                cb.reply("Таймер действительно установлен на "+format(seconds)+". Он сработает даже если JARVIS закрыт.");
+            } catch(Throwable e){cb.reply("Не удалось установить таймер. Проверьте разрешение JARVIS на «Будильники и напоминания».");}
         }
-        static String format(int s){if(s>=3600)return (s/3600)+" ч";if(s%60==0)return (s/60)+" мин";return s+" сек";}
+        static void cancel(Context c,Callback cb){
+            try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(pi);pi.cancel();c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().clear().apply();cb.reply("Таймер отменён.");}catch(Throwable e){cb.reply("Не удалось отменить таймер.");}
+        }
+        static String format(int s){if(s>=3600)return(s/3600)+" ч";if(s%60==0)return(s/60)+" мин";return s+" сек";}
     }
     static final class AlarmTool { static void schedule(Context c,String text,Callback cb){Matcher m=Pattern.compile("(?:на|в)\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(text);if(!m.find()){cb.reply("Скажите время, например: будильник на 07:00.");return;}try{int hh=Integer.parseInt(m.group(1)),mm=m.group(2)==null?0:Integer.parseInt(m.group(2));if(hh>23||mm>59)throw new Exception();Calendar cal=Calendar.getInstance();cal.set(Calendar.HOUR_OF_DAY,hh);cal.set(Calendar.MINUTE,mm);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);if(cal.before(Calendar.getInstance()))cal.add(Calendar.DAY_OF_YEAR,1);AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_ALARM");PendingIntent pi=PendingIntent.getBroadcast(c,77,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=31 && !am.canScheduleExactAlarms()) { c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); cb.reply("Откройте разрешение на точные будильники, затем повторите команду."); return; } if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);else am.setExact(AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);cb.reply(String.format(Locale.getDefault(),"Будильник установлен на %02d:%02d.",hh,mm));}catch(Exception e){cb.reply("Не удалось установить будильник.");}} }
 }
