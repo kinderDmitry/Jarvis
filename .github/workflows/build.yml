@@ -18,6 +18,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build release APK
         run: gradle --no-daemon --stacktrace :app:assembleRelease
+      - name: Verify release artifact
+        run: test -s app/build/outputs/apk/release/app-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
