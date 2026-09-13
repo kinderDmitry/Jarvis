@@ -1,4 +1,4 @@
-# JARVIS 5.17.0 — Premium Assistant
+# JARVIS 5.19.0 — Premium Assistant
 
 ## Что изменено
 - Полностью унифицирована типографика и геометрия интерактивных элементов: главные кнопки, быстрые действия, инструменты и системные настройки используют одну адаптивную HUD-систему без фиксированных огромных шрифтов.
@@ -29,3 +29,18 @@
 - App launching now targets installed packages by name; Yandex Music uses the verified Android package `ru.yandex.music`, with installed-app fallback.
 - Voice recognition prefers the device's normal recognition service for better Russian recognition; the assistant recognition service keeps an on-device fallback.
 - Release build remains reproducible through the included GitHub Actions workflow.
+
+
+## 5.19.0 — UI / Settings / Update patch
+- Удалена полоса быстрых кнопок с главного экрана.
+- Строка запроса перенесена в нижнюю фиксированную панель над навигацией; поле и кнопка отправки увеличены и имеют одинаковую высоту.
+- Вся интерактивная типографика унифицирована: фиксированная геометрия, центрирование, ограничение строк и адаптивный размер текста без распирания кнопок.
+- Экран настроек полностью перестроен в ту же визуальную систему, что и верхние кнопки главного экрана.
+- Исправлен критический crash SettingsActivity: `voiceState` теперь создаётся до передачи в строку профиля.
+- Удалена зависимость от несуществующего `Settings.ACTION_TTS_SETTINGS`; TTS открывается через совместимый Android intent с fallback.
+- Сохранены `applicationId` и release signing config; versionCode увеличен с 22 до 23, versionName — 5.19.0-premium-jarvis, поэтому подписанный APK может обновляться поверх установленной 5.18 без удаления приложения.
+- Центральное ядро и кнопка `ГОВОРИТЬ` используют реальное распознавание Android; при наличии on-device recognizer он используется первым.
+- Реальная погода, новости, таймер, будильник, управление системными разделами и запуск приложений сохранены.
+
+## Проверка
+В контейнере этой сессии Gradle CLI отсутствует, поэтому локальный `assembleRelease` здесь не запускался. GitHub Actions в проекте по-прежнему устанавливает Gradle 8.11.1 и Java 17, после чего выполняет `:app:assembleRelease` и проверяет готовый APK.
