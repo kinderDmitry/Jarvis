@@ -1,14 +1,19 @@
 package com.jarvis.homemultitool;
 
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
-import android.os.Bundle;
+import android.os.Build;
 import android.service.voice.VoiceInteractionService;
 import android.view.WindowManager;
 
-/** System-level assistant entry point. Android keeps the selected assistant service alive. */
+/** Lightweight system-assistant entry point. */
 public class JarvisVoiceInteractionService extends VoiceInteractionService {
-    @Override public void onReady() {
-        super.onReady();
+    @Override public void onReady() { super.onReady(); }
+
+    public static boolean isActive(Context context) {
+        return VoiceInteractionService.isActiveService(context,
+                new ComponentName(context, JarvisVoiceInteractionService.class));
     }
 
     @Override public void onLaunchVoiceAssistFromKeyguard() {
