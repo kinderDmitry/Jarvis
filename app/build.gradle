@@ -15,8 +15,8 @@ android {
         applicationId 'com.jarvis.homemultitool'
         minSdk 26
         targetSdk 35
-        versionCode 14
-        versionName '5.10.0-professional-hud'
+        versionCode 15
+        versionName '5.11.0-professional-hud-fixed'
     }
     buildTypes {
         release {
