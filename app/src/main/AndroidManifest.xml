@@ -1,30 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.BIND_VOICE_INTERACTION"/>
-    <application android:theme="@style/AppTheme" android:label="JARVIS" android:allowBackup="true" android:supportsRtl="true">
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.BIND_VOICE_INTERACTION" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <application android:theme="@style/AppTheme" android:label="JARVIS" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-    
-        <service
-            android:name=".JarvisVoiceInteractionService"
-            android:exported="true"
-            android:permission="android.permission.BIND_VOICE_INTERACTION">
-            <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService"/>
-            </intent-filter>
-            <meta-data
-                android:name="android.voice_interaction"
-                android:resource="@xml/voice_interaction_service"/>
+        <service android:name=".JarvisVoiceInteractionService" android:exported="true" android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter><action android:name="android.service.voice.VoiceInteractionService" /></intent-filter>
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/voice_interaction_service" />
         </service>
-        <service
-            android:name=".JarvisVoiceSessionService"
-            android:exported="false"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"/>
+        <service android:name=".JarvisVoiceSessionService" android:exported="false" android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <receiver android:name=".AlarmReceiver" android:exported="false" />
     </application>
 </manifest>
