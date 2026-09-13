@@ -3,6 +3,7 @@ package com.jarvis.homemultitool;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.RemoteException;
 import android.speech.RecognitionService;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -25,11 +26,11 @@ public class JarvisRecognitionService extends RecognitionService {
             } else {
                 delegate = createFallbackRecognizer();
             }
-            if (delegate == null) { callback.error(SpeechRecognizer.ERROR_CLIENT); return; }
+            if (delegate == null) { safeError(callback, SpeechRecognizer.ERROR_CLIENT); return; }
             delegate.setRecognitionListener(new RecognitionListenerBridge(callback));
             delegate.startListening(intent != null ? intent : new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH));
         } catch (Throwable t) {
-            callback.error(SpeechRecognizer.ERROR_CLIENT);
+            safeError(callback, SpeechRecognizer.ERROR_CLIENT);
             destroyDelegate();
         }
     }
@@ -60,17 +61,21 @@ public class JarvisRecognitionService extends RecognitionService {
         if (delegate != null) { try { delegate.cancel(); } catch (Throwable ignored) { } try { delegate.destroy(); } catch (Throwable ignored) { } delegate = null; }
     }
 
+    private static void safeError(Callback callback, int error) {
+        try { callback.error(error); } catch (RemoteException ignored) {}
+    }
+
     private static final class RecognitionListenerBridge implements android.speech.RecognitionListener {
         private final Callback cb;
         RecognitionListenerBridge(Callback callback) { cb = callback; }
-        public void onReadyForSpeech(Bundle p) { cb.readyForSpeech(p); }
-        public void onBeginningOfSpeech() { cb.beginningOfSpeech(); }
-        public void onRmsChanged(float r) { cb.rmsChanged(r); }
-        public void onBufferReceived(byte[] b) { cb.bufferReceived(b); }
-        public void onEndOfSpeech() { cb.endOfSpeech(); }
-        public void onError(int e) { cb.error(e); }
-        public void onResults(Bundle b) { cb.results(b); }
-        public void onPartialResults(Bundle b) { cb.partialResults(b); }
-        public void onEvent(int eventType, Bundle params) { cb.rmsChanged(0f); }
+        public void onReadyForSpeech(Bundle p) { try { cb.readyForSpeech(p); } catch (RemoteException ignored) {} }
+        public void onBeginningOfSpeech() { try { cb.beginningOfSpeech(); } catch (RemoteException ignored) {} }
+        public void onRmsChanged(float r) { try { cb.rmsChanged(r); } catch (RemoteException ignored) {} }
+        public void onBufferReceived(byte[] b) { try { cb.bufferReceived(b); } catch (RemoteException ignored) {} }
+        public void onEndOfSpeech() { try { cb.endOfSpeech(); } catch (RemoteException ignored) {} }
+        public void onError(int e) { try { cb.error(e); } catch (RemoteException ignored) {} }
+        public void onResults(Bundle b) { try { cb.results(b); } catch (RemoteException ignored) {} }
+        public void onPartialResults(Bundle b) { try { cb.partialResults(b); } catch (RemoteException ignored) {} }
+        public void onEvent(int eventType, Bundle params) { try { cb.rmsChanged(0f); } catch (RemoteException ignored) {} }
     }
 }
