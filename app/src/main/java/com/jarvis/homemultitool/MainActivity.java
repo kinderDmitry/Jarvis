@@ -84,6 +84,6 @@ public class MainActivity extends Activity {
     private void speak(String s){runOnUiThread(()->{jarvisLine.setText("JARVIS  ·  "+s);setState("ГОВОРЮ");});if(tts!=null)tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis_reply");}
     private void setState(String s){runOnUiThread(()->{statusText(s);if(core!=null)core.setState(s);});}
     private void statusText(String s){if(status!=null)status.setText(s);}
-    @Override protected void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==REQ_MIC&&g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED)listen();}
+    @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==REQ_MIC&&g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED)listen();}
     @Override protected void onDestroy(){if(recognizer!=null)try{recognizer.destroy();}catch(Throwable ignored){}if(tts!=null){try{tts.stop();}catch(Throwable ignored){}try{tts.shutdown();}catch(Throwable ignored){}}if(engine!=null)engine.shutdown();super.onDestroy();}
 }
