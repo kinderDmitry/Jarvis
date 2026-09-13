@@ -1,46 +1,23 @@
-# JARVIS 5.19.0 — Premium Assistant
+# JARVIS 5.21.0 — Premium Assistant
 
-## Что изменено
-- Полностью унифицирована типографика и геометрия интерактивных элементов: главные кнопки, быстрые действия, инструменты и системные настройки используют одну адаптивную HUD-систему без фиксированных огромных шрифтов.
-- Настройки перестроены как аккуратные карточки с безопасными высотами и переносом описаний; текст больше не должен попадать под кнопки.
-- Полноэкранный immersive-режим применяется на главном экране и в настройках и повторно включается при возврате Activity.
-- Нажатие на центральное ядро и `ГОВОРИТЬ` запускает реальный Android SpeechRecognizer.
-- Фоновый режим «Джарвис» теперь обрабатывает команду внутри foreground-сервиса, поэтому ответ не зависит от того, какое приложение открыто на экране. После ответа микрофон освобождается и слушатель запускается заново.
-- Добавлена более аккуратная обработка сегментов распознавания и выбор on-device распознавания, когда оно доступно.
-- Системный Assistant Role сохранён как основной и наиболее надёжный способ вызова JARVIS системной кнопкой помощника.
-- Реальная текущая погода получается через Open-Meteo; запросы `завтра` и `послезавтра` получают отдельный прогноз. Погода не берётся из Википедии.
-- Добавлен отдельный live-поток новостей через Google News RSS для команд `новости`, `новости сейчас` и похожих запросов.
-- Добавлен короткий контекст погоды: после запроса погоды фраза `а завтра?` понимается как продолжение разговора.
-- Расширены реальные локальные команды: время, дата, батарея, таймер, будильник, фонарик, громкость, камера, Wi-Fi, Bluetooth, экран, системные настройки, разрешения приложения, календарь, музыка, звонок и SMS-композер, локальная память и калькулятор.
-- Мужской/женский профили не создают искусственный аудиофайл: JARVIS выбирает реально установленный русский голос Android TTS и меняет тембр/скорость профиля. Кнопка TTS ведёт в настоящие настройки синтеза речи Android.
-- Исправлена причина предыдущей ошибки TTS: качество голоса сравнивается через `Voice.QUALITY_NORMAL/HIGH`, а не через несуществующий `TextToSpeech.VOICE_QUALITY_NORMAL`.
-- Release поднят до `5.17.0`, versionCode `20`; signing config и applicationId сохранены.
+## This build
+- Unified premium HUD geometry on the home screen and Settings: one button system, centered labels, stable 48–50dp action heights, controlled typography and no text-driven button expansion.
+- Removed quick-action row from the home screen. The command composer is fixed at the bottom, wider and taller, with a send button matching the input height.
+- Settings are rebuilt with wrap-content cards instead of fragile fixed card geometry, preventing text from overlapping controls or producing stretched/flattened layouts.
+- Fixed the TTS settings compile problem by using the compatible Android TTS settings action string with a safe system-settings fallback.
+- Preserved real Android settings destinations: Assistant role, microphone/app permissions, notifications, exact alarms, battery optimization, display, Wi-Fi and Bluetooth.
+- VersionCode increased to 25 and versionName to 5.21.0-premium-jarvis. applicationId and release signing key are unchanged so a correctly signed release updates the installed JARVIS in place.
+- Central core and the `ГОВОРИТЬ` button use real Android speech recognition.
+- Wake-word mode continues to use a microphone foreground service and recognizes `Джарвис`, `Привет Джарвис`, `Джарвису` and English `Jarvis` variants when supplied by the recognizer.
+- Natural dialogue improved: combined greetings such as `Привет, Джарвис, как дела?` receive a conversational response instead of a generic greeting.
+- Live weather remains sourced from Open-Meteo; weather requests do not fall back to Wikipedia.
+- App launching is handled before general web search; unknown `открой/запусти ...` commands return an explicit app-not-found response instead of reading unrelated web results.
+- Fixed Java regex word-boundary handling for common app commands (YouTube, Telegram, WhatsApp, Chrome, Maps, Calculator).
+- Existing local tools remain: time/date, battery, live weather and forecast, news, timer, alarm, calculator, flashlight, volume, camera, Wi-Fi/Bluetooth/display/settings, calendar, app launching, calls/SMS composer, local notes and web search.
+- Male/female profiles use actual Russian Android TTS voices available on the device; the app does not claim to synthesize a cinema voice that Android does not provide.
 
-## Важное ограничение Android
-Обычный `SpeechRecognizer` не является системным всегда-включённым hotword engine. Поэтому фоновый режим реализован как foreground-сервис с короткими окнами распознавания. Для системного вызова из любой точки Android рекомендуется назначить JARVIS системным помощником. Наличие собственного wake-word «Джарвис» полностью без ограничений зависит от политики конкретной версии Android/OEM и не может быть гарантировано обычному приложению.
+## Android limitation
+A normal `SpeechRecognizer` is not an OEM-level always-on hotword engine. The phrase `Привет, Джарвис` can work system-wide only while the foreground wake service is actually allowed to run and the device/OEM permits microphone background operation. Selecting JARVIS as the Android Assistant remains the reliable system invocation path.
 
-## Проверка сборки
-В текущем рабочем контейнере Gradle CLI отсутствует, поэтому здесь невозможно честно заявить о локальном `assembleRelease`. Проект подготовлен для GitHub Actions: workflow устанавливает Gradle 8.11.1 и Java 17, собирает release и дополнительно проверяет наличие и целостность APK через `file` и `unzip -t`.
-
-
-## 5.17 UI / voice stability patch
-- Unified density-independent sizing across the main HUD and Settings; long labels use two-line wrap instead of clipped text.
-- Settings buttons use safe Android intent resolution with concrete fallbacks, including TTS, notifications, permissions, battery, alarms, Wi-Fi and Bluetooth.
-- App launching now targets installed packages by name; Yandex Music uses the verified Android package `ru.yandex.music`, with installed-app fallback.
-- Voice recognition prefers the device's normal recognition service for better Russian recognition; the assistant recognition service keeps an on-device fallback.
-- Release build remains reproducible through the included GitHub Actions workflow.
-
-
-## 5.19.0 — UI / Settings / Update patch
-- Удалена полоса быстрых кнопок с главного экрана.
-- Строка запроса перенесена в нижнюю фиксированную панель над навигацией; поле и кнопка отправки увеличены и имеют одинаковую высоту.
-- Вся интерактивная типографика унифицирована: фиксированная геометрия, центрирование, ограничение строк и адаптивный размер текста без распирания кнопок.
-- Экран настроек полностью перестроен в ту же визуальную систему, что и верхние кнопки главного экрана.
-- Исправлен критический crash SettingsActivity: `voiceState` теперь создаётся до передачи в строку профиля.
-- Удалена зависимость от несуществующего `Settings.ACTION_TTS_SETTINGS`; TTS открывается через совместимый Android intent с fallback.
-- Сохранены `applicationId` и release signing config; versionCode увеличен с 22 до 23, versionName — 5.19.0-premium-jarvis, поэтому подписанный APK может обновляться поверх установленной 5.18 без удаления приложения.
-- Центральное ядро и кнопка `ГОВОРИТЬ` используют реальное распознавание Android; при наличии on-device recognizer он используется первым.
-- Реальная погода, новости, таймер, будильник, управление системными разделами и запуск приложений сохранены.
-
-## Проверка
-В контейнере этой сессии Gradle CLI отсутствует, поэтому локальный `assembleRelease` здесь не запускался. GitHub Actions в проекте по-прежнему устанавливает Gradle 8.11.1 и Java 17, после чего выполняет `:app:assembleRelease` и проверяет готовый APK.
+## Build verification
+The working container used for this archive does not have the Gradle CLI installed, so a local `assembleRelease` cannot be honestly claimed here. The included GitHub Actions workflow installs Gradle 8.11.1 and Java 17, runs `:app:assembleRelease`, verifies the APK with `file` and `unzip -t`, and uploads the release artifact.
