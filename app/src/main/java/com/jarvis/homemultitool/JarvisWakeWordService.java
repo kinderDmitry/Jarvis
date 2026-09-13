@@ -51,7 +51,7 @@ public class JarvisWakeWordService extends Service {
                 ArrayList<String> r = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 if (r != null) for (String text : r) {
                     String x = text.toLowerCase(new java.util.Locale("ru"));
-                    if (x.contains("джарвис") || x.contains("джарвису")) { launchAssistant(); break; }
+                    if (x.contains("джарвис") || x.contains("джарвису")) { launchAssistant(extractQuery(x)); break; }
                 }
                 restartLater();
             }
@@ -72,12 +72,19 @@ public class JarvisWakeWordService extends Service {
         new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 350);
     }
 
-    private void launchAssistant() {
+    private String extractQuery(String text) {
+        String x = text.replaceAll("(?i)джарвису?", " ").trim();
+        x = x.replaceAll("^[,.:;\\-]+", "").trim();
+        return x;
+    }
+
+    private void launchAssistant(String query) {
         Intent i = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP |
                         Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS |
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         i.putExtra("WAKE_WORD", true);
+        if (query != null && !query.isEmpty()) i.putExtra("WAKE_QUERY", query);
         i.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                 android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         startActivity(i);

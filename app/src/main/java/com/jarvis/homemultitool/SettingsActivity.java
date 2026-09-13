@@ -40,7 +40,7 @@ public class SettingsActivity extends Activity {
         section(root,"РЕЧЬ");
         Button voice=button("НАСТРОЙКИ СИНТЕЗА РЕЧИ ANDROID");voice.setOnClickListener(v->{try{startActivity(new Intent("com.android.settings.TTS_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}});root.addView(voice,lp(-1,52,0,0,0,8));
         Button assist=button("НАСТРОЙКИ ГОЛОСОВОГО ВВОДА ANDROID");assist.setOnClickListener(v->{try{startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}});root.addView(assist,lp(-1,52,0,0,0,12));
-        section(root,"ПРИВАТНОСТЬ");TextView privacy=text("JARVIS работает локально. Облачные AI API не требуются. Разрешения Android можно изменить в системных настройках приложения.",12);privacy.setTextColor(MUTED);privacy.setPadding(2,4,2,12);root.addView(privacy);
+        section(root,"ПРИВАТНОСТЬ");TextView privacy=text("JARVIS использует интернет для актуальных ответов и поиска. Команды телефона выполняются через Android. Вы можете в любой момент отключить разрешения приложения в системных настройках.",12);privacy.setTextColor(MUTED);privacy.setPadding(2,4,2,12);root.addView(privacy);
         Button app=button("РАЗРЕШЕНИЯ ПРИЛОЖЕНИЯ");app.setOnClickListener(v->{try{Intent i=new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);i.setData(android.net.Uri.parse("package:"+getPackageName()));startActivity(i);}catch(Exception ignored){}});root.addView(app,lp(-1,52,0,0,0,0));sv.addView(root);setContentView(sv);
     }
     private void section(LinearLayout r,String s){TextView v=text(s,11);v.setTextColor(CYAN);v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);v.setLetterSpacing(.12f);r.addView(v,lp(-1,28,2,8,0,3));}
