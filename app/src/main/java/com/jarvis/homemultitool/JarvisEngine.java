@@ -50,7 +50,19 @@ public final class JarvisEngine {
         if(c.contains("открой настройки")||c.equals("настройки")){open(new Intent(Settings.ACTION_SETTINGS),"Открываю системные настройки.");return;}
         if(c.contains("разрешени")&&c.contains("приложени")){open(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:"+context.getPackageName())),"Открываю разрешения JARVIS.");return;}
         if(c.contains("календар")){open(new Intent(Intent.ACTION_VIEW,Uri.parse("content://com.android.calendar/time/")),"Открываю календарь.");return;}
-        if(c.contains("музык")){open(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MUSIC),"Открываю музыкальное приложение.");return;}
+        if(c.contains("музык")||c.contains("яндекс музыку")||c.contains("яндекс музыка")){
+            launchNamedApp(original, c, "музыку", "ru.yandex.music", "com.yandex.music", "Яндекс Музыка", "Открываю Яндекс Музыку.");
+            return;
+        }
+        if(c.matches(".*\\b(ютуб|youtube)\\b.*")){launchNamedApp(original,c,"youtube","com.google.android.youtube","com.google.android.youtube.tv","YouTube","Открываю YouTube.");return;}
+        if(c.matches(".*\\b(телеграм|telegram)\\b.*")){launchNamedApp(original,c,"telegram","org.telegram.messenger","Telegram","Открываю Telegram.");return;}
+        if(c.matches(".*\\b(ватсап|whatsapp)\\b.*")){launchNamedApp(original,c,"whatsapp","com.whatsapp","WhatsApp","Открываю WhatsApp.");return;}
+        if(c.matches(".*\\b(хром|chrome)\\b.*")){launchNamedApp(original,c,"chrome","com.android.chrome","Chrome","Открываю Chrome.");return;}
+        if(c.matches(".*\\b(карты|карта)\\b.*")){launchNamedApp(original,c,"карты","com.google.android.apps.maps","Google Maps","Открываю карты.");return;}
+        if(c.matches(".*\\b(калькулятор|калькулятор)\\b.*")){launchNamedApp(original,c,"калькулятор","com.google.android.calculator","Калькулятор","Открываю калькулятор.");return;}
+        if(c.matches("^(открой|запусти|включи)\\s+.+")){
+            if(launchInstalledApp(original,c)){return;}
+        }
         if(c.contains("позвони")||c.contains("набери номер")){dial(original);return;}
         if(c.contains("смс")||c.contains("сообщение")){sms(original);return;}
         if(c.contains("новости сейчас")||c.equals("новости")||c.startsWith("новости ")){web.news(new WebSearchEngine.Callback(){public void result(String t,String src){reply(t);}public void state(String st){cb.state(st);}});return;}
@@ -92,6 +104,40 @@ public final class JarvisEngine {
         try{double a=Double.parseDouble(m.group(1)),b=Double.parseDouble(m.group(3));if("/".equals(m.group(2))&&b==0){reply("На ноль делить нельзя.");return;}double r="+".equals(m.group(2))?a+b:"-".equals(m.group(2))?a-b:"*".equals(m.group(2))?a*b:a/b;reply("Результат: "+(r==Math.rint(r)?Long.toString((long)r):String.format(Locale.US,"%.6f",r).replaceAll("0+$","").replaceAll("\\.$","")));}catch(Exception e){reply("Не удалось вычислить выражение.");}}
     private void toggleTorch(){if(Build.VERSION.SDK_INT<23){reply("Фонарик не поддерживается.");return;}try{CameraManager cm=(CameraManager)context.getSystemService(Context.CAMERA_SERVICE);String id=cm.getCameraIdList()[0];boolean on=prefs.getBoolean("torch",false);cm.setTorchMode(id,!on);prefs.edit().putBoolean("torch",!on).apply();reply(!on?"Фонарик включён.":"Фонарик выключен.");}catch(Exception e){reply("Не удалось управлять фонариком.");}}
     private void adjustVolume(String c){AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);if(c.contains("увелич")||c.contains("громче")){am.adjustVolume(AudioManager.ADJUST_RAISE,AudioManager.FLAG_SHOW_UI);reply("Громкость увеличена.");}else if(c.contains("умень")||c.contains("тише")){am.adjustVolume(AudioManager.ADJUST_LOWER,AudioManager.FLAG_SHOW_UI);reply("Громкость уменьшена.");}else reply("Скажите: громче или тише.");}
+    private void launchNamedApp(String original,String normalized,String hint,String... packagesAndAnswer){
+        String answer=packagesAndAnswer[packagesAndAnswer.length-1];
+        for(int i=0;i<packagesAndAnswer.length-1;i++){
+            String pkg=packagesAndAnswer[i];
+            if(pkg==null||pkg.trim().isEmpty())continue;
+            try{Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);if(launch!=null){launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);reply(answer);return;}}catch(Throwable ignored){}
+        }
+        if(launchInstalledApp(original,normalized))return;
+        reply("Не нашёл приложение «"+hint+"» на этом телефоне.");
+    }
+
+    private boolean launchInstalledApp(String original,String normalized){
+        try{
+            PackageManager pm=context.getPackageManager();
+            Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);
+            String q=normalized.replaceAll("(?iu)^(открой|запусти|включи|открывай|запускай)\\s+","").trim();
+            if(q.isEmpty())return false;
+            android.content.pm.ResolveInfo best=null; int score=0;
+            for(android.content.pm.ResolveInfo ri:apps){
+                if(ri.activityInfo==null||context.getPackageName().equals(ri.activityInfo.packageName))continue;
+                String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');
+                String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);
+                String qq=q.replace('ё','е'); int sc=0;
+                if(label.equals(qq))sc=100; else if(label.contains(qq)||qq.contains(label))sc=70;
+                String[] words=qq.split("\\s+"); for(String w:words)if(w.length()>2&&label.contains(w))sc+=20;
+                if(pkg.contains(qq.replace(' ','.')))sc+=30;
+                if(sc>score){score=sc;best=ri;}
+            }
+            if(best!=null&&score>=40){Intent launch=new Intent(Intent.ACTION_MAIN);launch.addCategory(Intent.CATEGORY_LAUNCHER);launch.setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name));launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);reply("Открываю "+best.loadLabel(pm)+".");return true;}
+        }catch(Throwable ignored){}
+        return false;
+    }
+
     private void dial(String raw){String d=raw.replaceAll("[^0-9+]","");if(d.length()<5){reply("Назовите номер телефона.");return;}open(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+d)),"Открываю набор номера.");}
     private void sms(String raw){String d=raw.replaceAll("[^0-9+]","");Intent i=new Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:"+(d.length()>4?d:"")));i.putExtra("sms_body",raw);open(i,"Открываю сообщение.");}
     private void open(Intent i,String answer){try{i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(i);reply(answer);}catch(Exception e){reply("Не удалось открыть системное действие.");}}

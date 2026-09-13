@@ -21,10 +21,9 @@ public class JarvisRecognitionService extends RecognitionService {
     protected void onStartListening(Intent intent, Callback callback) {
         destroyDelegate();
         try {
-            if (android.os.Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+            delegate = createFallbackRecognizer();
+            if (delegate == null && android.os.Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
                 delegate = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
-            } else {
-                delegate = createFallbackRecognizer();
             }
             if (delegate == null) { safeError(callback, SpeechRecognizer.ERROR_CLIENT); return; }
             delegate.setRecognitionListener(new RecognitionListenerBridge(callback));
