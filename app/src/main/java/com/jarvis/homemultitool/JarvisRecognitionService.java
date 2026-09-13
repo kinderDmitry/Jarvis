@@ -71,5 +71,6 @@ public class JarvisRecognitionService extends RecognitionService {
         public void onError(int e) { cb.error(e); }
         public void onResults(Bundle b) { cb.results(b); }
         public void onPartialResults(Bundle b) { cb.partialResults(b); }
+        public void onEvent(int eventType, Bundle params) { cb.rmsChanged(0f); }
     }
 }

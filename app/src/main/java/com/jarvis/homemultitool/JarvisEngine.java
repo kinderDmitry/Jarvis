@@ -18,7 +18,7 @@ import java.util.regex.*;
 /** Fast, dependency-free local command engine. Heavy AI is intentionally not put on the UI thread. */
 public final class JarvisEngine {
     public interface Callback { void reply(String text); void state(String state); }
-    private final Context context; private final Callback cb; private final SharedPreferences prefs;
+    private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web = new WebSearchEngine();
     public JarvisEngine(Context c, Callback callback){ context=c.getApplicationContext(); cb=callback; prefs=c.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE); }
     public void handle(final String raw){
         if(raw==null||raw.trim().isEmpty()) return;
@@ -26,6 +26,22 @@ public final class JarvisEngine {
         // Fast path: no LLM/network for deterministic operations.
         if(c.matches(".*\\b(привет|здравствуй|доброе утро|добрый вечер|джарвис)\\b.*")){reply("На связи, сэр. Чем могу помочь?");return;}
         if(c.contains("который час")||c.equals("время")||c.contains("сколько времени")){reply("Сейчас "+new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date())+".");return;}
+        if(c.contains("сколько звезд") && (c.contains("на земле") || c.contains("во вселенной") || c.contains("во вселенной"))){
+            reply("Точного числа звёзд на Земле нет: Земля сама по себе не содержит звёзд. Если вы имеете в виду наблюдаемое небо, невооружённым глазом при очень тёмном небе видно несколько тысяч звёзд одновременно. Если речь о наблюдаемой Вселенной, оценка порядка 10^22–10^24 звёзд."); return;
+        }
+        if(c.contains("сколько звезд") && c.contains("млечн") ){
+            reply("В Млечном Пути, по современным оценкам, примерно 100–400 миллиардов звёзд. Точного подсчёта нет."); return;
+        }
+        if(c.contains("сколько планет") && (c.contains("солнечн") || c.contains("солнечной системе"))){
+            reply("В Солнечной системе официально признаны 8 планет: от Меркурия до Нептуна."); return;
+        }
+        if(c.contains("скорость света")){ reply("В вакууме скорость света составляет примерно 299 792 458 метров в секунду."); return; }
+        if(c.contains("температура солнца") || c.contains("сколько градусов на солнце")){ reply("Температура фотосферы Солнца — примерно 5 500 градусов Цельсия. В ядре — около 15 миллионов градусов."); return; }
+        if(c.contains("самая большая планета")){ reply("Самая большая планета Солнечной системы — Юпитер."); return; }
+        if(c.contains("самая маленькая планета")){ reply("Самая маленькая планета Солнечной системы — Меркурий."); return; }
+        if(c.contains("сколько океанов") || c.contains("сколько океанов на земле")){ reply("Обычно выделяют пять океанов: Тихий, Атлантический, Индийский, Южный и Северный Ледовитый."); return; }
+        if(c.contains("столица россии")){ reply("Столица России — Москва."); return; }
+        if(c.contains("сколько дней в году")){ reply("В обычном году 365 дней, а в високосном — 366."); return; }
         if(c.contains("какая дата")||c.contains("какое сегодня число")||c.contains("сегодняшняя дата")){reply("Сегодня "+new SimpleDateFormat("d MMMM yyyy",new Locale("ru","RU")).format(new Date())+".");return;}
         if(c.contains("батаре")||c.contains("заряд")){android.os.BatteryManager bm=(android.os.BatteryManager)context.getSystemService(Context.BATTERY_SERVICE);int p=bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);reply("Заряд батареи: "+p+" процентов.");return;}
         if(c.contains("таймер")){int seconds=parseDuration(c); if(seconds>0){TimerStore.start(context,seconds,cb);return;} reply("Скажите длительность, например: таймер на 15 минут.");return;}
@@ -46,8 +62,14 @@ public final class JarvisEngine {
         if(c.contains("позвони")||c.contains("набери номер")){dial(original);return;}
         if(c.contains("смс")||c.contains("сообщение")){sms(original);return;}
         if(c.contains("выбери меня")||c.contains("системным ассистентом")||c.contains("экран блокировки")){reply("Для вызова JARVIS с экрана блокировки выберите JARVIS системным ассистентом Android в настройках голосового ввода.");return;}
-        if(c.contains("кто ты")||c.contains("что ты умеешь")){reply("Я JARVIS. Работаю локально: голос, диалог, память, быстрые команды Android, таймеры, будильники, расчёты, камера, настройки, звонки и сообщения. Сетевые и облачные сервисы не используются.");return;}
-        reply("Я услышал: «"+original+"». Эта команда пока не относится к моим локальным инструментам. Я не буду имитировать выполнение того, чего реально не умею.");
+        if(c.contains("кто ты")||c.contains("что ты умеешь")){reply("Я JARVIS. Я могу разговаривать, выполнять команды телефона и искать актуальную информацию в интернете.");return;}
+        // Unknown questions go to the internet instead of a fake canned response.
+        web.search(original, new WebSearchEngine.Callback() {
+            @Override public void result(String text, String source) {
+                reply((source == null || source.isEmpty()) ? text : text + "\n\nИсточник: " + source);
+            }
+            @Override public void state(String state) { cb.state(state); }
+        });
     }
     private void reply(String s){cb.reply(s);}
     private void save(String s){if(s.trim().isEmpty()){reply("Что именно сохранить?");return;}String old=prefs.getString("notes","");prefs.edit().putString("notes",old.isEmpty()?s:old+"\n• "+s).apply();reply("Сохранил в локальную память.");}
@@ -58,6 +80,8 @@ public final class JarvisEngine {
     private void dial(String raw){String d=raw.replaceAll("[^0-9+]","");if(d.length()<5){reply("Назовите номер телефона.");return;}open(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+d)),"Открываю набор номера.");}
     private void sms(String raw){String d=raw.replaceAll("[^0-9+]","");Intent i=new Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:"+(d.length()>4?d:"")));i.putExtra("sms_body",raw);open(i,"Открываю сообщение.");}
     private void open(Intent i,String answer){try{ i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(i);reply(answer);}catch(Exception e){reply("Не удалось открыть системное действие.");}}
+
+    public void shutdown(){ web.shutdown(); }
 
     static final class TimerStore { static void start(Context c,int seconds,Callback cb){new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->cb.reply("Сэр, время вышло."),seconds*1000L);cb.reply("Принято. Таймер запущен на "+(seconds>=3600?(seconds/3600)+" ч":(seconds/60)+" мин")+".");} }
     static final class AlarmTool { static void schedule(Context c,String text,Callback cb){Matcher m=Pattern.compile("(?:на|в)\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(text);if(!m.find()){cb.reply("Скажите время, например: будильник на 07:00.");return;}try{int hh=Integer.parseInt(m.group(1)),mm=m.group(2)==null?0:Integer.parseInt(m.group(2));if(hh>23||mm>59)throw new Exception();Calendar cal=Calendar.getInstance();cal.set(Calendar.HOUR_OF_DAY,hh);cal.set(Calendar.MINUTE,mm);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);if(cal.before(Calendar.getInstance()))cal.add(Calendar.DAY_OF_YEAR,1);android.app.AlarmManager am=(android.app.AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class);android.app.PendingIntent pi=android.app.PendingIntent.getBroadcast(c,77,i,android.app.PendingIntent.FLAG_UPDATE_CURRENT|android.app.PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);else am.setExact(android.app.AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);cb.reply(String.format(Locale.getDefault(),"Будильник установлен на %02d:%02d.",hh,mm));}catch(Exception e){cb.reply("Не удалось установить будильник.");}} }

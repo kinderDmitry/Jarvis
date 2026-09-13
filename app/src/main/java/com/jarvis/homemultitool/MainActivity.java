@@ -3,372 +3,87 @@ package com.jarvis.homemultitool;
 import android.Manifest;
 import android.app.Activity;
 import android.app.role.RoleManager;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
+import android.os.*;
 import android.provider.Settings;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
+import android.speech.*;
 import android.speech.tts.TextToSpeech;
-import android.view.Gravity;
-import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
+import android.view.*;
 import android.view.inputmethod.InputMethodManager;
 import android.content.Context;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
+import android.widget.*;
 import java.util.ArrayList;
 import java.util.Locale;
 
-/**
- * JARVIS single-screen voice assistant UI. The screen intentionally contains very little text:
- * the assistant is the interface, not a collection of feature cards.
- */
+/** Premium, voice-first JARVIS surface. Settings stay off the main screen. */
 public class MainActivity extends Activity {
-    private static final int BG = Color.rgb(1, 5, 11);
-    private static final int BLUE = Color.rgb(18, 151, 255);
-    private static final int CYAN = Color.rgb(92, 224, 255);
-    private static final int TEXT = Color.WHITE;
-    private static final int MUTED = Color.rgb(116, 151, 183);
-    private static final int GREEN = Color.rgb(65, 240, 178);
-    private static final int REQ_ROLE = 41;
-    private static final int REQ_MIC = 42;
-
-    private TextView status;
-    private TextView userLine;
-    private TextView jarvisLine;
-    private TextView roleState;
+    private static final int BG=Color.rgb(2,7,13), PANEL=Color.rgb(5,15,26), BLUE=Color.rgb(31,163,255), CYAN=Color.rgb(102,230,255), TEXT=Color.WHITE, MUTED=Color.rgb(126,161,190), GREEN=Color.rgb(64,238,178);
+    private static final int REQ_MIC=42;
+    private TextView status,userLine,jarvisLine,online;
     private EditText input;
     private SpeechRecognizer recognizer;
     private Intent recognizerIntent;
     private TextToSpeech tts;
     private JarvisCoreView core;
     private JarvisEngine engine;
-    private boolean speaking;
 
-    @Override
-    protected void onCreate(Bundle state) {
-        super.onCreate(state);
-        Window w = getWindow();
-        w.setStatusBarColor(BG);
-        w.setNavigationBarColor(BG);
-        boolean lock = getIntent().getBooleanExtra("LOCKSCREEN_ASSIST", false)
-                || getIntent().getBooleanExtra("WAKE_WORD", false);
-        if (lock) {
-            w.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                    | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        }
-
+    @Override protected void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
+        boolean lock=getIntent().getBooleanExtra("LOCKSCREEN_ASSIST",false)||getIntent().getBooleanExtra("WAKE_WORD",false);
+        if(lock)getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED|WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         buildUi();
-        engine = new JarvisEngine(this, new JarvisEngine.Callback() {
-            @Override public void reply(String text) { speak(text); }
-            @Override public void state(String value) { MainActivity.this.setState(value); }
-        });
-        initTts();
-        initSpeech();
-        if (lock) new Handler(Looper.getMainLooper()).postDelayed(this::listen, 300);
-        refreshAssistantState();
+        engine=new JarvisEngine(this,new JarvisEngine.Callback(){public void reply(String s){speak(s);} public void state(String s){setState(s);}});
+        initTts(); initSpeech(); if(lock)new Handler(Looper.getMainLooper()).postDelayed(this::listen,250);
     }
+    private TextView tv(String s,float z){TextView v=new TextView(this);v.setText(s);v.setTextColor(TEXT);v.setTextSize(z);return v;}
+    private GradientDrawable shape(int stroke,int fill,float radius){GradientDrawable g=new GradientDrawable();g.setColor(fill);g.setCornerRadius(radius);g.setStroke(1,stroke);return g;}
+    private LinearLayout.LayoutParams lp(int w,int h,int l,int t,int r,int b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(w,h);p.setMargins(l,t,r,b);return p;}
+    private TextView label(String s){TextView v=tv(s,10);v.setTextColor(MUTED);v.setLetterSpacing(.14f);v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}
 
-    private TextView text(String value, float size) {
-        TextView v = new TextView(this);
-        v.setText(value);
-        v.setTextColor(TEXT);
-        v.setTextSize(size);
-        return v;
+    private void buildUi(){
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(BG);
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(18,12,18,18);
+        LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView logo=tv("JARVIS",24);logo.setTextColor(CYAN);logo.setTypeface(Typeface.DEFAULT,Typeface.BOLD);head.addView(logo,lp(0,50,0,0,0,0));((LinearLayout.LayoutParams)logo.getLayoutParams()).weight=1;
+        status=tv("ГОТОВ",10);status.setTextColor(MUTED);status.setGravity(Gravity.CENTER);head.addView(status,lp(70,38,0,0,4,0));
+        online=tv("● ONLINE",10);online.setTextColor(GREEN);online.setGravity(Gravity.CENTER);head.addView(online,lp(82,38,0,0,4,0));
+        TextView settings=tv("⚙",24);settings.setTextColor(CYAN);settings.setGravity(Gravity.CENTER);settings.setOnClickListener(v->startActivity(new Intent(this,SettingsActivity.class)));head.addView(settings,lp(48,48,0,0,0,0));
+        root.addView(head,lp(-1,52,0,0,0,0));
+        LinearLayout sub=new LinearLayout(this);sub.setGravity(Gravity.CENTER_VERTICAL);TextView s=label("PERSONAL AI ASSISTANT");sub.addView(s);root.addView(sub,lp(-1,25,2,0,0,2));
+
+        FrameLayout coreFrame=new FrameLayout(this);core=new JarvisCoreView(this);core.setOnClickListener(v->listen());coreFrame.addView(core,new FrameLayout.LayoutParams(-1,350));
+        TextView center=tv("TAP TO SPEAK",11);center.setTextColor(CYAN);center.setGravity(Gravity.CENTER);center.setTypeface(Typeface.DEFAULT,Typeface.BOLD);center.setLetterSpacing(.18f);FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,40,Gravity.BOTTOM);cp.bottomMargin=8;coreFrame.addView(center,cp);
+        root.addView(coreFrame,lp(-1,350,0,2,0,0));
+
+        LinearLayout chat=new LinearLayout(this);chat.setOrientation(LinearLayout.VERTICAL);chat.setPadding(16,14,16,14);chat.setBackground(shape(0xFF124A76,PANEL,26));
+        userLine=tv("",12);userLine.setTextColor(MUTED);jarvisLine=tv("JARVIS готов.",15);jarvisLine.setTypeface(Typeface.DEFAULT,Typeface.BOLD);chat.addView(userLine);chat.addView(jarvisLine,lp(-1,-2,0,7,0,0));root.addView(chat,lp(-1,-2,0,4,0,10));
+
+        LinearLayout inputRow=new LinearLayout(this);inputRow.setGravity(Gravity.CENTER_VERTICAL);input=new EditText(this);input.setSingleLine(true);input.setTextColor(TEXT);input.setHintTextColor(MUTED);input.setTextSize(14);input.setHint("Спросите что-нибудь…");input.setPadding(16,0,12,0);input.setBackground(shape(0xFF15577E,0xFF071725,28));inputRow.addView(input,lp(0,56,0,0,8,0));
+        Button send=smallButton("➤");send.setTextSize(18);send.setOnClickListener(v->sendText());inputRow.addView(send,lp(58,56,0,0,0,0));root.addView(inputRow,lp(-1,56,0,0,0,10));
+
+        LinearLayout micRow=new LinearLayout(this);micRow.setGravity(Gravity.CENTER);Button mic=primary("◉  ГОВОРИТЬ");mic.setOnClickListener(v->listen());micRow.addView(mic,lp(0,52,0,0,0,0));((LinearLayout.LayoutParams)mic.getLayoutParams()).weight=1;Button stop=smallButton("■");stop.setOnClickListener(v->stopAll());micRow.addView(stop,lp(58,52,8,0,0,0));root.addView(micRow,lp(-1,52,0,0,0,10));
+
+        LinearLayout chips=new LinearLayout(this);chips.setGravity(Gravity.CENTER);String[] q={"Время","Погода","Новости","Таймер"};for(String x:q){Button b=smallButton(x);b.setOnClickListener(v->command(x.equals("Время")?"который час":x.equals("Таймер")?"таймер":x));chips.addView(b,lp(0,42,3,0,3,0));((LinearLayout.LayoutParams)b.getLayoutParams()).weight=1;}root.addView(chips,lp(-1,42,0,0,0,8));
+        TextView hint=tv("JARVIS умеет искать актуальную информацию в интернете",10);hint.setTextColor(MUTED);hint.setGravity(Gravity.CENTER);root.addView(hint,lp(-1,28,0,0,0,0));
+        scroll.addView(root);setContentView(scroll);
     }
-
-    private GradientDrawable bg(int stroke, int fill) {
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{fill, 0xFF020A14});
-        g.setCornerRadius(30);
-        g.setStroke(1, stroke);
-        return g;
+    private Button smallButton(String s){Button b=new Button(this);b.setText(s);b.setTextColor(TEXT);b.setTextSize(11);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setBackground(shape(0xFF124A76,0xFF061522,22));return b;}
+    private Button primary(String s){Button b=smallButton(s);b.setTextSize(13);b.setTextColor(CYAN);b.setBackground(shape(0xFF1D9DFF,0xFF071A2A,28));return b;}
+    private void initTts(){tts=new TextToSpeech(this,r->{if(r==TextToSpeech.SUCCESS){tts.setLanguage(new Locale("ru","RU"));tts.setSpeechRate(.94f);tts.setPitch(.82f);}});}
+    private void initSpeech(){if(!SpeechRecognizer.isRecognitionAvailable(this))return;try{if(Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(this))recognizer=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);else recognizer=SpeechRecognizer.createSpeechRecognizer(this);}catch(Throwable t){recognizer=null;}if(recognizer==null)return;
+        recognizer.setRecognitionListener(new RecognitionListener(){public void onReadyForSpeech(Bundle b){setState("СЛУШАЮ");}public void onBeginningOfSpeech(){}public void onRmsChanged(float v){}public void onBufferReceived(byte[] b){}public void onEndOfSpeech(){setState("ОБРАБОТКА");}public void onError(int e){setState("ГОТОВ");}public void onResults(Bundle b){ArrayList<String> r=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(r!=null&&!r.isEmpty())command(r.get(0));else setState("ГОТОВ");}public void onPartialResults(Bundle b){}public void onEvent(int a,Bundle b){}});
+        recognizerIntent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU");recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5);
     }
-
-    private Button actionButton(String title) {
-        Button b = new Button(this);
-        b.setText(title);
-        b.setTextColor(TEXT);
-        b.setTextSize(12);
-        b.setAllCaps(false);
-        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setBackground(bg(0xFF124A76, 0xFF061525));
-        return b;
-    }
-
-    private LinearLayout.LayoutParams lp(int width, int height, int l, int t, int r, int b) {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(width, height);
-        p.setMargins(l, t, r, b);
-        return p;
-    }
-
-    private void buildUi() {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setBackgroundColor(BG);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(16, 8, 16, 18);
-
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView logo = text("J A R V I S", 24);
-        logo.setTextColor(CYAN);
-        logo.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        TextView settings = text("⚙", 24);
-        settings.setTextColor(CYAN);
-        settings.setGravity(Gravity.CENTER);
-        settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        header.addView(logo, lp(0, 54, 0, 0, 0, 0));
-        ((LinearLayout.LayoutParams) logo.getLayoutParams()).weight = 1f;
-        header.addView(settings, lp(48, 54, 8, 0, 0, 0));
-        root.addView(header, lp(-1, 54, 0, 0, 0, 0));
-
-        LinearLayout stateRow = new LinearLayout(this);
-        stateRow.setGravity(Gravity.CENTER);
-        TextView dot = text("●", 10);
-        dot.setTextColor(GREEN);
-        status = text("  ГОТОВ  •  ЛОКАЛЬНО", 11);
-        status.setTextColor(MUTED);
-        stateRow.addView(dot);
-        stateRow.addView(status);
-        root.addView(stateRow, lp(-1, 28, 0, 0, 0, 2));
-
-        core = new JarvisCoreView(this);
-        core.setOnClickListener(v -> listen());
-        root.addView(core, lp(-1, 330, 0, 2, 0, 0));
-
-        TextView coreHint = text("НАЖМИТЕ И ГОВОРИТЕ", 11);
-        coreHint.setTextColor(CYAN);
-        coreHint.setGravity(Gravity.CENTER);
-        coreHint.setLetterSpacing(.12f);
-        root.addView(coreHint, lp(-1, 32, 0, -2, 0, 4));
-
-        LinearLayout dialogue = new LinearLayout(this);
-        dialogue.setOrientation(LinearLayout.VERTICAL);
-        dialogue.setPadding(16, 13, 16, 13);
-        dialogue.setBackground(bg(0xFF0B5689, 0xFF061322));
-        userLine = text("", 12);
-        userLine.setTextColor(MUTED);
-        jarvisLine = text("", 15);
-        jarvisLine.setTextColor(TEXT);
-        jarvisLine.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        dialogue.addView(userLine);
-        dialogue.addView(jarvisLine, lp(-1, -2, 0, 5, 0, 0));
-        root.addView(dialogue, lp(-1, -2, 0, 5, 0, 8));
-
-        LinearLayout inputRow = new LinearLayout(this);
-        inputRow.setGravity(Gravity.CENTER_VERTICAL);
-        input = new EditText(this);
-        input.setSingleLine(true);
-        input.setTextColor(TEXT);
-        input.setHintTextColor(MUTED);
-        input.setTextSize(14);
-        input.setHint("Сообщение JARVIS");
-        input.setPadding(16, 0, 12, 0);
-        input.setBackground(bg(0xFF0E4770, 0xFF061321));
-        inputRow.addView(input, lp(0, 54, 0, 0, 7, 0));
-        Button send = actionButton("➤");
-        send.setTextSize(18);
-        send.setOnClickListener(v -> sendText());
-        inputRow.addView(send, lp(58, 54, 0, 0, 0, 0));
-        root.addView(inputRow, lp(-1, 54, 0, 0, 0, 8));
-
-        LinearLayout quick = new LinearLayout(this);
-        quick.setGravity(Gravity.CENTER);
-        String[] commands = {"Время", "Таймер", "Память", "Камера"};
-        for (String cmd : commands) {
-            Button q = actionButton(cmd);
-            q.setOnClickListener(v -> command(cmd));
-            quick.addView(q, lp(0, 48, 3, 0, 3, 0));
-            ((LinearLayout.LayoutParams) q.getLayoutParams()).weight = 1f;
-        }
-        root.addView(quick, lp(-1, 48, 0, 0, 0, 8));
-
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER);
-        Button stop = actionButton("■  Остановить ответ");
-        stop.setOnClickListener(v -> stopListening());
-        bottom.addView(stop, lp(-1, 46, 0, 0, 0, 0));
-        root.addView(bottom);
-
-        scroll.addView(root);
-        setContentView(scroll);
-    }
-
-    private void initTts() {
-        tts = new TextToSpeech(this, result -> {
-            if (result == TextToSpeech.SUCCESS) {
-                tts.setLanguage(new Locale("ru", "RU"));
-                tts.setSpeechRate(.94f);
-                tts.setPitch(.82f);
-            }
-        });
-    }
-
-    private void initSpeech() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
-        if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
-            recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
-        } else {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
-        }
-        recognizer.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(Bundle b) { setState("СЛУШАЮ"); }
-            @Override public void onBeginningOfSpeech() { }
-            @Override public void onRmsChanged(float v) { }
-            @Override public void onBufferReceived(byte[] b) { }
-            @Override public void onEndOfSpeech() { setState("ОБРАБОТКА"); }
-            @Override public void onError(int e) { setState("ГОТОВ"); }
-            @Override public void onResults(Bundle b) {
-                ArrayList<String> r = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if (r != null && !r.isEmpty()) command(r.get(0)); else setState("ГОТОВ");
-            }
-            @Override public void onPartialResults(Bundle b) { }
-            @Override public void onEvent(int a, Bundle b) { }
-        });
-        recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
-    }
-
-    private void listen() {
-        if (recognizer == null) {
-            setState("НЕТ РЕЧИ");
-            return;
-        }
-        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
-            return;
-        }
-        try {
-            recognizer.startListening(recognizerIntent);
-            setState("СЛУШАЮ");
-        } catch (Throwable ignored) {
-            setState("ГОТОВ");
-        }
-    }
-
-    private void stopListening() {
-        if (recognizer != null) {
-            try { recognizer.stopListening(); } catch (Throwable ignored) { }
-            try { recognizer.cancel(); } catch (Throwable ignored) { }
-        }
-        stopService(new Intent(this, JarvisWakeWordService.class));
-        if (tts != null) {
-            try { tts.stop(); } catch (Throwable ignored) { }
-        }
-        setState("ГОТОВ");
-    }
-
-    private void sendText() {
-        String s = input.getText().toString().trim();
-        if (s.isEmpty()) return;
-        input.setText("");
-        command(s);
-    }
-
-    private void command(String s) {
-        if (userLine != null) userLine.setText("ВЫ  •  " + s);
-        if (jarvisLine != null) jarvisLine.setText("JARVIS  •  …");
-        if (engine != null) engine.handle(s);
-    }
-
-    private void speak(String s) {
-        runOnUiThread(() -> {
-            if (jarvisLine != null) jarvisLine.setText("JARVIS  •  " + s);
-            setState("ГОВОРЮ");
-        });
-        if (tts != null) {
-            speaking = true;
-            tts.speak(s, TextToSpeech.QUEUE_FLUSH, null, "jarvis_reply");
-        }
-    }
-
-    private void setState(String s) {
-        runOnUiThread(() -> {
-            if (status != null) status.setText("  " + s + "  •  ЛОКАЛЬНО");
-            if (core != null) core.setState(s);
-        });
-    }
-
-    private void requestAssistantRole() {
-        if (Build.VERSION.SDK_INT >= 29) {
-            try {
-                RoleManager rm = getSystemService(RoleManager.class);
-                if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
-                    if (!rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-                        startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT), REQ_ROLE);
-                    } else {
-                        refreshAssistantState();
-                    }
-                    return;
-                }
-            } catch (Throwable ignored) { }
-        }
-        try {
-            startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
-        } catch (Throwable ignored) {
-            startActivity(new Intent(Settings.ACTION_SETTINGS));
-        }
-    }
-
-    private void refreshAssistantState() {
-        boolean active = JarvisVoiceInteractionService.isActive(this);
-        if (roleState != null) {
-            roleState.setText(active ? "АКТИВЕН" : "НЕ ВЫБРАН");
-            roleState.setTextColor(active ? GREEN : MUTED);
-        }
-    }
-
-    private void startWakeWord() {
-        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
-            return;
-        }
-        Intent i = new Intent(this, JarvisWakeWordService.class);
-        try {
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
-            setState("ЖДУ «ДЖАРВИС»");
-        } catch (Throwable ignored) {
-            setState("ГОТОВ");
-        }
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        refreshAssistantState();
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_ROLE) new Handler(Looper.getMainLooper()).postDelayed(this::refreshAssistantState, 500);
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_MIC && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) listen();
-    }
-
-    @Override protected void onDestroy() {
-        if (recognizer != null) { try { recognizer.destroy(); } catch (Throwable ignored) { } }
-        if (tts != null) { try { tts.stop(); } catch (Throwable ignored) { } try { tts.shutdown(); } catch (Throwable ignored) { } }
-        super.onDestroy();
-    }
+    private void listen(){if(recognizer==null){setState("НЕТ РЕЧИ");return;}if(Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},REQ_MIC);return;}try{recognizer.startListening(recognizerIntent);setState("СЛУШАЮ");}catch(Throwable t){setState("ГОТОВ");}}
+    private void stopAll(){if(recognizer!=null){try{recognizer.stopListening();}catch(Throwable ignored){}try{recognizer.cancel();}catch(Throwable ignored){}}if(tts!=null)try{tts.stop();}catch(Throwable ignored){}setState("ГОТОВ");}
+    private void sendText(){String s=input.getText().toString().trim();if(s.isEmpty())return;input.setText("");((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(input.getWindowToken(),0);command(s);}
+    private void command(String s){userLine.setText("ВЫ  ·  "+s);jarvisLine.setText("JARVIS  ·  анализирую…");engine.handle(s);}
+    private void speak(String s){runOnUiThread(()->{jarvisLine.setText("JARVIS  ·  "+s);setState("ГОВОРЮ");});if(tts!=null)tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis_reply");}
+    private void setState(String s){runOnUiThread(()->{statusText(s);if(core!=null)core.setState(s);});}
+    private void statusText(String s){if(status!=null)status.setText(s);}
+    @Override protected void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==REQ_MIC&&g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED)listen();}
+    @Override protected void onDestroy(){if(recognizer!=null)try{recognizer.destroy();}catch(Throwable ignored){}if(tts!=null){try{tts.stop();}catch(Throwable ignored){}try{tts.shutdown();}catch(Throwable ignored){}}if(engine!=null)engine.shutdown();super.onDestroy();}
 }
