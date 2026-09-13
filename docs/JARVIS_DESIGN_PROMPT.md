@@ -1,10 +1,34 @@
-# JARVIS UI Design Direction
+# JARVIS UI direction — v5.2
 
-Use the supplied JARVIS reference image as the visual source of truth.
+Use the supplied reference image as the visual source of truth, but implement it as a real responsive Android interface rather than a collage.
 
-## Prompt
-Create a premium futuristic mobile AI-assistant interface for JARVIS. Use a nearly black background with deep navy panels, electric cyan/blue neon illumination, thin luminous outlines, high contrast white typography, subtle glass/glow depth, and restrained sci-fi HUD geometry. The central JARVIS Core must be the visual focus: a bright cyan-blue circular energy core with multiple concentric technical rings, orbiting segments, a minimal robotic helmet/face emblem, and a clean audio waveform below. The interface should feel like a finished flagship assistant, not a generic dashboard or a collection of utility cards.
+## Target
+- Premium futuristic JARVIS assistant, not a utility dashboard.
+- Black/deep-navy background with bright cyan/electric-blue neon accents.
+- One dominant central AI Core with a clean helmet/face mark and thin concentric HUD rings.
+- Large visual hierarchy: logo -> core -> status -> conversation -> input.
+- Very little copy. Never fill the screen with explanatory paragraphs.
+- Rounded dark panels, thin blue borders, restrained glow.
+- No flattened grids of tiny buttons.
+- No decorative text pretending to be functionality.
+- The microphone is the primary action.
+- The screen must remain readable on narrow phones and scale vertically without fixed-width stretching.
 
-Keep the hierarchy from the reference: compact JARVIS header, large central Core, clear listening state, waveform, three primary actions, conversation area, voice-call/settings cards, and a compact bottom navigation. Use generous spacing, consistent corner radii, 1px luminous borders, soft blue bloom, dark surfaces, and crisp typography. Avoid muddy gradients, oversized controls, excessive decoration, dense text, cartoon styling, or generic Android widgets. All controls must remain functional and touch-friendly.
+## Motion
+- Core rings rotate slowly.
+- Waveform reacts to LISTENING/SPEAKING states.
+- Animations are Canvas-based and hardware accelerated.
+- No bitmap-heavy blur, particle systems, or continuous software shadows.
 
-Performance rule: visual effects must be lightweight. Prefer Canvas drawing, alpha fades, and small property animations over large bitmap animations, blur-heavy effects, or continuously rendered particle fields. The main screen must remain responsive while speech recognition, TTS, or local AI work runs.
+## States
+READY / LISTENING / THINKING / EXECUTING / SPEAKING / ERROR
+
+The state is shown as one compact line. The assistant should feel alive through motion, not through extra text.
+
+## Interaction
+- Tap the core or microphone to talk.
+- Type in one compact field when needed.
+- Conversation appears only after the user interacts.
+- System-assistant setup is a single compact card.
+- Wake-word control is a single compact action.
+- Settings are behind one gear icon.
