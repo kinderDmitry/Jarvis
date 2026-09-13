@@ -20,6 +20,7 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.view.Gravity;
+import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -108,127 +109,106 @@ public class MainActivity extends Activity {
         p.setMargins(l, t, r, b); return p;
     }
 
+    private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
+
+    private TextView iconButton(String glyph, View.OnClickListener listener) {
+        TextView v = text(glyph, 24);
+        v.setGravity(Gravity.CENTER);
+        v.setTextColor(WHITE);
+        v.setBackground(shape(0xFF123B5A, 0xAA071522, dp(30)));
+        v.setOnClickListener(listener);
+        return v;
+    }
+
+    private TextView pill(String label, int color) {
+        TextView v = text(label, 11);
+        v.setGravity(Gravity.CENTER);
+        v.setTextColor(color);
+        v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        v.setLetterSpacing(.08f);
+        v.setBackground(shape(0xFF123D5C, 0xCC061421, dp(22)));
+        return v;
+    }
+
     private void buildUi() {
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(BG);
+        frame.setPadding(dp(16), 0, dp(16), 0);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL);
-        root.setPadding(16, 18, 16, 22);
-
-        // Centered content column prevents the HUD from looking glued to the status bar.
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.setPadding(0, 0, 0, 0);
-        root.addView(content, lp(-1, -2, 0, 0, 0, 0));
-
+        // Top command rail. It deliberately stays compact so the JARVIS core owns the screen.
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView brand = text("JARVIS", 25);
-        brand.setTextColor(CYAN); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        header.addView(brand, lp(0, 38, 0, 0, 0, 0));
-        ((LinearLayout.LayoutParams) brand.getLayoutParams()).weight = 1;
-        modeLabel = micro("PERSONAL AI  •  WEB AGENT");
-        modeLabel.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        header.addView(modeLabel, lp(0, 38, 0, 0, 8, 0));
-        TextView settings = text("⚙", 21);
-        settings.setGravity(Gravity.CENTER);
-        settings.setTextColor(WHITE);
-        settings.setBackground(shape(0xFF16324A, 0xFF07131F, 20));
-        settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        header.addView(settings, lp(44, 44, 0, 0, 0, 0));
-        content.addView(header, lp(-1, 48, 0, 0, 0, 6));
+        TextView menu = iconButton("≡", v -> Toast.makeText(this, "Меню JARVIS", Toast.LENGTH_SHORT).show());
+        header.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView brand = text("J A R V I S", 24);
+        brand.setTextColor(CYAN); brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD); brand.setGravity(Gravity.CENTER);
+        brand.setLetterSpacing(.16f);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, dp(48), 1f); bp.setMargins(dp(8),0,dp(8),0);
+        header.addView(brand, bp);
+        TextView settings = iconButton("⌘", v -> startActivity(new Intent(this, SettingsActivity.class)));
+        header.addView(settings, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(-1, dp(64), Gravity.TOP); hp.topMargin = dp(12);
+        frame.addView(header, hp);
 
-        LinearLayout statusRow = new LinearLayout(this);
-        statusRow.setGravity(Gravity.CENTER_VERTICAL);
-        status = text("ГОТОВ", 11); status.setTextColor(CYAN);
-        status.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        statusRow.addView(status, lp(0, 30, 0, 0, 0, 0));
-        ((LinearLayout.LayoutParams) status.getLayoutParams()).weight = 1;
-        online = micro("●  ПРОВЕРКА СЕТИ"); online.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        statusRow.addView(online, lp(0, 30, 0, 0, 0, 0));
-        ((LinearLayout.LayoutParams) online.getLayoutParams()).weight = 1;
-        content.addView(statusRow, lp(-1, 30, 0, 0, 0, 3));
-        updateNetworkState();
+        // Small status rail under the header.
+        LinearLayout rail = new LinearLayout(this); rail.setGravity(Gravity.CENTER_VERTICAL);
+        status = micro("ГОТОВ"); status.setTextSize(11); status.setTextColor(CYAN);
+        rail.addView(status, new LinearLayout.LayoutParams(0, dp(28), 1f));
+        online = micro("●  ПРОВЕРКА СЕТИ"); online.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        rail.addView(online, new LinearLayout.LayoutParams(0, dp(28), 1f));
+        FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(-1, dp(28), Gravity.TOP); rp.topMargin = dp(82);
+        frame.addView(rail, rp); updateNetworkState();
 
-        // Hero card: the visual focus of the application.
-        LinearLayout hero = new LinearLayout(this);
-        hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setGravity(Gravity.CENTER_HORIZONTAL);
-        hero.setPadding(10, 10, 10, 6);
-        hero.setBackground(shape(0xFF16466A, 0xCC040D17, 28));
+        // Central HUD. The visual core is intentionally isolated from controls.
+        FrameLayout coreHolder = new FrameLayout(this);
+        core = new JarvisCoreView(this); core.setState("ГОТОВ"); core.startPulse(); core.setOnClickListener(v -> listen());
+        coreHolder.addView(core, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(-1, dp(270), Gravity.TOP); cp.topMargin = dp(112);
+        frame.addView(coreHolder, cp);
 
-        TextView heroTitle = micro("J A R V I S   C O R E");
-        heroTitle.setTextColor(MUTED); heroTitle.setGravity(Gravity.CENTER);
-        hero.addView(heroTitle, lp(-1, 24, 0, 0, 0, 0));
+        TextView coreStatus = text("●  СИСТЕМА ГОТОВА", 13); coreStatus.setTextColor(CYAN); coreStatus.setGravity(Gravity.CENTER); coreStatus.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        FrameLayout.LayoutParams csp = new FrameLayout.LayoutParams(-1, dp(28), Gravity.TOP); csp.topMargin = dp(362);
+        frame.addView(coreStatus, csp);
 
-        FrameLayout coreFrame = new FrameLayout(this);
-        core = new JarvisCoreView(this);
-        core.setState("ГОТОВ");
-        core.setOnClickListener(v -> listen());
-        core.startPulse();
-        coreFrame.addView(core, new FrameLayout.LayoutParams(-1, -1));
-        hero.addView(coreFrame, lp(-1, 280, 0, 0, 0, 0));
+        // Response surface — no permanent giant chat box.
+        LinearLayout response = new LinearLayout(this); response.setOrientation(LinearLayout.VERTICAL); response.setPadding(dp(18),dp(14),dp(18),dp(14));
+        response.setBackground(shape(0xFF174B70, 0xE605111D, dp(24)));
+        userLine = micro("ГОТОВ К ЗАПРОСУ"); response.addView(userLine, new LinearLayout.LayoutParams(-1, dp(22)));
+        jarvisLine = text("Сэр, я готов. Нажмите на ядро или скажите «Джарвис». ", 15); jarvisLine.setTypeface(Typeface.DEFAULT, Typeface.BOLD); jarvisLine.setMaxLines(3);
+        response.addView(jarvisLine, new LinearLayout.LayoutParams(-1, -2));
+        FrameLayout.LayoutParams resp = new FrameLayout.LayoutParams(-1, dp(88), Gravity.BOTTOM); resp.bottomMargin = dp(160);
+        frame.addView(response, resp);
 
-        micLabel = text("НАЖМИТЕ НА ЯДРО ИЛИ СКАЖИТЕ «ДЖАРВИС»", 10);
-        micLabel.setTextColor(MUTED); micLabel.setGravity(Gravity.CENTER);
-        micLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        hero.addView(micLabel, lp(-1, 28, 0, 0, 0, 0));
-        content.addView(hero, lp(-1, 342, 0, 0, 0, 9));
+        // Voice command controls.
+        LinearLayout commandBar = new LinearLayout(this); commandBar.setGravity(Gravity.CENTER_VERTICAL);
+        input = new EditText(this); input.setSingleLine(true); input.setTextColor(WHITE); input.setHintTextColor(MUTED); input.setTextSize(15); input.setHint("Спросить JARVIS…"); input.setPadding(dp(18),0,dp(10),0); input.setBackground(shape(0xFF15527A,0xE6091927,dp(27))); input.setImeOptions(6);
+        commandBar.addView(input, new LinearLayout.LayoutParams(0, dp(54), 1f));
+        TextView send = iconButton("›", v -> sendText()); send.setTextSize(32); LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(54),dp(54)); sp.setMargins(dp(8),0,0,0); commandBar.addView(send,sp);
+        FrameLayout.LayoutParams cmdp = new FrameLayout.LayoutParams(-1, dp(54), Gravity.BOTTOM); cmdp.bottomMargin = dp(96);
+        frame.addView(commandBar,cmdp);
 
-        // Conversation card with distinct user/assistant hierarchy.
-        LinearLayout conversation = new LinearLayout(this);
-        conversation.setOrientation(LinearLayout.VERTICAL);
-        conversation.setPadding(16, 12, 16, 13);
-        conversation.setBackground(shape(0xFF173B58, CARD, 22));
+        LinearLayout actionRow = new LinearLayout(this); actionRow.setGravity(Gravity.CENTER); actionRow.setPadding(0,0,0,0);
+        TextView mic = pill("●  ГОВОРИТЬ", CYAN); mic.setTextSize(13); mic.setOnClickListener(v -> listen());
+        actionRow.addView(mic, new LinearLayout.LayoutParams(0,dp(52),1f));
+        TextView stop = pill("■  СТОП", WHITE); LinearLayout.LayoutParams stp=new LinearLayout.LayoutParams(dp(92),dp(52)); stp.setMargins(dp(8),0,0,0); actionRow.addView(stop,stp); stop.setOnClickListener(v->stopAll());
+        FrameLayout.LayoutParams arp = new FrameLayout.LayoutParams(-1,dp(52),Gravity.BOTTOM); arp.bottomMargin=dp(36+60); frame.addView(actionRow,arp);
 
-        userLine = micro("ГОТОВ К ЗАПРОСУ");
-        conversation.addView(userLine, lp(-1, 21, 0, 0, 0, 3));
-        jarvisLine = text("Сэр, я готов. Спросите что-нибудь или дайте команду.", 14);
-        jarvisLine.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        jarvisLine.setMaxLines(4);
-        conversation.addView(jarvisLine, lp(-1, -2, 0, 0, 0, 0));
-        content.addView(conversation, lp(-1, -2, 0, 0, 0, 8));
+        // Bottom navigation: visually integrated, not a row of random Android buttons.
+        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(8),dp(7),dp(8),dp(5)); nav.setBackground(shape(0xFF123B5A,0xF2071019,dp(28)));
+        addNavItem(nav,"◉","JARVIS",true, v->{}); addNavItem(nav,"◌","Память",false,v->command("что ты помнишь")); addNavItem(nav,"⌁","Инструменты",false,v->Toast.makeText(this,"Инструменты доступны голосом",Toast.LENGTH_SHORT).show()); addNavItem(nav,"⌘","Настройки",false,v->startActivity(new Intent(this,SettingsActivity.class)));
+        FrameLayout.LayoutParams np=new FrameLayout.LayoutParams(-1,dp(76),Gravity.BOTTOM); np.bottomMargin=dp(8); frame.addView(nav,np);
 
-        // Text input is intentionally compact; voice remains primary.
-        LinearLayout inputRow = new LinearLayout(this);
-        inputRow.setGravity(Gravity.CENTER_VERTICAL);
-        input = new EditText(this);
-        input.setSingleLine(true); input.setTextColor(WHITE); input.setHintTextColor(MUTED);
-        input.setTextSize(14); input.setHint("Спросить JARVIS…"); input.setPadding(17, 0, 12, 0);
-        input.setBackground(shape(0xFF1B5378, CARD2, 26)); input.setImeOptions(6);
-        inputRow.addView(input, lp(0, 52, 0, 0, 8, 0));
-        ((LinearLayout.LayoutParams) input.getLayoutParams()).weight = 1;
-        TextView send = text("➤", 23); send.setTextColor(CYAN); send.setGravity(Gravity.CENTER);
-        send.setBackground(shape(0xFF1A5B82, 0xFF071B2B, 26)); send.setOnClickListener(v -> sendText());
-        inputRow.addView(send, lp(52, 52, 0, 0, 0, 0));
-        content.addView(inputRow, lp(-1, 52, 0, 0, 0, 7));
+        micLabel = text("Нажмите на ядро или скажите «Джарвис»", 11); micLabel.setTextColor(MUTED); micLabel.setGravity(Gravity.CENTER); micLabel.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        FrameLayout.LayoutParams mlp=new FrameLayout.LayoutParams(-1,dp(24),Gravity.BOTTOM); mlp.bottomMargin=dp(168); frame.addView(micLabel,mlp);
 
-        LinearLayout voiceRow = new LinearLayout(this);
-        voiceRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView mic = text("●  ГОВОРИТЬ", 13); mic.setTextColor(CYAN); mic.setGravity(Gravity.CENTER);
-        mic.setTypeface(Typeface.DEFAULT, Typeface.BOLD); mic.setBackground(shape(0xFF1A567C, 0xFF071927, 24));
-        mic.setOnClickListener(v -> listen());
-        voiceRow.addView(mic, lp(0, 50, 0, 0, 7, 0)); ((LinearLayout.LayoutParams) mic.getLayoutParams()).weight = 1;
-        TextView stop = text("■", 17); stop.setTextColor(WHITE); stop.setGravity(Gravity.CENTER);
-        stop.setBackground(shape(0xFF173A54, 0xFF07131F, 24)); stop.setOnClickListener(v -> stopAll());
-        voiceRow.addView(stop, lp(50, 50, 0, 0, 0, 0));
-        content.addView(voiceRow, lp(-1, 50, 0, 0, 0, 7));
-
-        LinearLayout quick = new LinearLayout(this); quick.setGravity(Gravity.CENTER);
-        addQuick(quick, "Время", "который час"); addQuick(quick, "Погода", "погода");
-        addQuick(quick, "Новости", "новости"); addQuick(quick, "Таймер", "таймер");
-        content.addView(quick, lp(-1, 40, 0, 0, 0, 0));
-
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
-        frame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         setContentView(frame);
+    }
+
+    private void addNavItem(LinearLayout nav,String icon,String title,boolean active,View.OnClickListener click){
+        LinearLayout item=new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER); item.setOnClickListener(click);
+        TextView i=text(icon,22); i.setGravity(Gravity.CENTER); i.setTextColor(active?CYAN:MUTED); item.addView(i,new LinearLayout.LayoutParams(-1,dp(30)));
+        TextView t=text(title,10); t.setGravity(Gravity.CENTER); t.setTextColor(active?WHITE:MUTED); t.setTypeface(Typeface.DEFAULT,Typeface.BOLD); item.addView(t,new LinearLayout.LayoutParams(-1,dp(22)));
+        nav.addView(item,new LinearLayout.LayoutParams(0,dp(64),1f));
     }
 
     private void addQuick(LinearLayout row, String title, String command) {
@@ -259,15 +239,17 @@ public class MainActivity extends Activity {
                 Set<Voice> voices = tts.getVoices();
                 if (voices != null) {
                     for (Voice v : voices) {
-                        if (!ru.equals(v.getLocale()) && !v.getLocale().toLanguageTag().startsWith("ru")) continue;
-                        if (v.isNetworkConnectionRequired()) continue;
-                        if (best == null || v.getQuality() > best.getQuality()) best = v;
+                        if (!v.getLocale().getLanguage().equalsIgnoreCase("ru")) continue;
+                        // Prefer the highest-quality Russian voice. Network voices are allowed
+                        // when the installed TTS engine provides them; they are often much more natural.
+                        if (best == null || v.getQuality() > best.getQuality() ||
+                                (v.getQuality() == best.getQuality() && v.isNetworkConnectionRequired() && !best.isNetworkConnectionRequired())) best = v;
                     }
                 }
                 if (best != null) tts.setVoice(best);
                 // A calmer rate/pitch sounds less synthetic on common Android TTS engines.
-                tts.setSpeechRate(.91f);
-                tts.setPitch(.90f);
+                tts.setSpeechRate(.88f);
+                tts.setPitch(.82f);
             } catch (Throwable ignored) { }
         });
     }

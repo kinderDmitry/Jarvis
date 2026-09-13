@@ -18,6 +18,7 @@ public class JarvisWakeWordService extends Service {
     private SpeechRecognizer recognizer;
     private Intent recognizerIntent;
     private boolean running;
+    private boolean restartScheduled;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -64,12 +65,15 @@ public class JarvisWakeWordService extends Service {
 
     private void startListening() {
         if (!running || recognizer == null) return;
+        restartScheduled = false;
+        try { recognizer.cancel(); } catch (Throwable ignored) {}
         try { recognizer.startListening(recognizerIntent); } catch (Throwable ignored) { restartLater(); }
     }
 
     private void restartLater() {
-        if (!running) return;
-        new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 350);
+        if (!running || restartScheduled) return;
+        restartScheduled = true;
+        new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 650);
     }
 
     private String extractQuery(String text) {

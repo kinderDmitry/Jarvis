@@ -38,7 +38,7 @@ public final class JarvisCoreView extends View {
     @Override protected void onDraw(Canvas c) {
         super.onDraw(c);
         float cx = getWidth()/2f, cy = getHeight()*.46f;
-        float r = Math.min(getWidth(), getHeight())*.205f;
+        float r = Math.min(getWidth(), getHeight())*.23f;
         float activity = state.contains("СЛУША") || state.contains("ИЩУ") || state.contains("ОБРАБОТ") || state.contains("ОТВЕЧ") ? 1.25f : 1f;
 
         p.setStyle(Paint.Style.FILL);
