@@ -1,18 +1,17 @@
-# JARVIS — Professional HUD 5.10.0
+# JARVIS 5.13.0 Professional HUD
 
-Android voice assistant / local multitool.
+Продолжение версии 5.12.0. `versionCode` увеличен до 17, поэтому APK с тем же applicationId и ключом подписи устанавливается как обновление, а не как отдельное приложение.
 
-## Build
-`gradle --no-daemon --stacktrace :app:assembleDebug`
+## Что исправлено
+- Полноэкранный immersive UI: системные панели Android скрываются во время работы JARVIS.
+- Главный экран переразложен по фиксированной сетке: ядро, ответ, «ГОВОРИТЬ» и «СТОП» больше не плавают по разным строкам.
+- Весь UI сохраняет единый чёрно-синий HUD-язык: тонкие синие контуры, неоновое свечение, единые размеры и отступы.
+- Настройки используют тот же визуальный язык и также работают в fullscreen.
+- Голосовой вызов «Джарвис» переведён на более устойчивый цикл фонового распознавания с автоматическим пересозданием распознавателя после ошибок.
+- Фоновое распознавание не принудительно ограничено offline-движком: при наличии сети используется доступный системный speech engine.
+- Команда погоды теперь получает текущие данные через Open-Meteo, а не статью Wikipedia.
+- Команды телефона остаются реальными: системный таймер/AlarmManager, будильник, фонарик, громкость, камера, настройки, календарь, музыка, звонок и SMS.
+- Release `versionCode=17`, `versionName=5.13.0-professional-hud`.
 
-## Release/update
-The application keeps the same `applicationId` (`com.jarvis.homemultitool`) and increments `versionCode` for each release. Installing a newer APK signed with the same signing key is therefore an Android update, not a second app. The GitHub Actions debug build uses the standard debug key; do not mix APKs signed by different keys.
-
-## Voice
-- Tap the main voice control or JARVIS core to start recognition.
-- In Settings, grant microphone access and explicitly enable background wake word.
-- Selecting JARVIS as the Android Assistant enables system assistant entry points where supported by the device/OEM.
-- Background microphone operation is implemented as a foreground microphone service and is subject to Android/OEM restrictions.
-
-## Timer
-Timer commands first use `AlarmClock.ACTION_SET_TIMER` with skip-UI. If the device exposes no compatible Clock handler, JARVIS uses a persistent `AlarmManager` notification fallback and reports that only after scheduling succeeds.
+## Сборка
+`gradle --no-daemon --stacktrace :app:assembleRelease`
