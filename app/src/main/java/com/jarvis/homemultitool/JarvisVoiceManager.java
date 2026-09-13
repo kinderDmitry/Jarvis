@@ -39,8 +39,8 @@ public final class JarvisVoiceManager {
             if(selected!=null) tts.setVoice(selected);
             float rate=prefs.getFloat("rate",0.90f);
             float pitch=prefs.getFloat("pitch",0.90f);
-            if(MALE.equals(gender)){ rate=0.88f; pitch=0.82f; }
-            else if(FEMALE.equals(gender)){ rate=0.94f; pitch=1.00f; }
+            if(MALE.equals(gender)){ rate=0.86f; pitch=0.78f; }
+            else if(FEMALE.equals(gender)){ rate=0.95f; pitch=1.02f; }
             tts.setSpeechRate(rate);
             tts.setPitch(pitch);
         }catch(Throwable ignored){}
@@ -82,7 +82,7 @@ public final class JarvisVoiceManager {
         if(!isReady()||text==null||text.trim().isEmpty())return;
         try{
             if(listener!=null)tts.setOnUtteranceProgressListener(listener);
-            tts.speak(text,TextToSpeech.QUEUE_FLUSH,null,"jarvis_reply");
+            String natural=text.trim().replace("...",". ").replace("  "," "); tts.speak(natural,TextToSpeech.QUEUE_FLUSH,null,"jarvis_reply");
         }catch(Throwable ignored){}
     }
     public void stop(){if(tts!=null)try{tts.stop();}catch(Throwable ignored){}}
