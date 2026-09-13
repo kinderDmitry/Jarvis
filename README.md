@@ -1,50 +1,56 @@
-# JARVIS Local Max v5.0
+# JARVIS Local Max v5.2 — Voice Fix + Clean HUD
 
-Полностью локальная, dependency-free основа голосового JARVIS без облачного AI API и без собственного сервера.
+Полностью локальная основа JARVIS без INTERNET permission, облачного AI API и собственного сервера.
 
-## Быстрый принцип
-- UI не выполняет тяжёлые операции.
-- Быстрые команды идут напрямую в `JarvisEngine` без LLM.
-- Голосовой ввод и TTS используют возможности Android.
-- Системный ассистент поддерживает вызов с экрана блокировки в рамках Android API.
-- Память хранится локально в SharedPreferences.
-- Нет INTERNET permission.
-- Никаких fake API responses: неподдерживаемые команды честно сообщаются пользователю.
+## Что исправлено в v5.2
 
-## Реальные локальные функции
-- голосовой/текстовый диалог;
-- время и дата;
+### Критический crash fix
+В предыдущей версии callback состояния из `JarvisEngine` вызывал сам себя рекурсивно (`state(s)`), что приводило к переполнению стека и принудительному закрытию приложения. Теперь callback явно вызывает `MainActivity.this.setState(...)`.
+
+### Почему JARVIS не появлялся среди системных ассистентов
+Android требует для VoiceInteractionService корректные `sessionService`, `recognitionService` и `supportsAssist=true`. В v5.2 добавлен настоящий `JarvisRecognitionService`, его metadata и отдельный recognition-service XML. MainActivity также объявляет `ACTION_ASSIST` как дополнительный qualifying path. Это соответствует текущей проверке Android assistant role. См. Android RoleManager/AssistantRoleBehavior.
+
+### Вызов с экрана блокировки
+- `VoiceInteractionService` — direct-boot aware.
+- `VoiceInteractionSessionService` — отдельный process `:voice`.
+- `supportsLaunchVoiceAssistFromKeyguard=true`.
+- `onLaunchVoiceAssistFromKeyguard()` открывает voice session.
+- Activity имеет `showWhenLocked` и `turnScreenOn`.
+
+### Голос
+- На Android 12+ при наличии устройства использует `SpeechRecognizer.createOnDeviceSpeechRecognizer()`.
+- Иначе использует системный recognition service.
+- TTS использует установленный на устройстве движок.
+- Никакого собственного сетевого API в приложении нет.
+
+## Новый интерфейс
+Главный экран больше не похож на мультитул. Это один голосовой помощник:
+
+`JARVIS → AI CORE → состояние → диалог → ввод → системный ассистент`
+
+Убраны длинные описательные карточки, декоративные абзацы и плотная сетка маленьких кнопок. Core рисуется Canvas-ом без bitmap-heavy эффектов и без software blur.
+
+## Быстрые локальные команды
+- время / дата;
 - батарея;
 - таймер;
 - будильник;
 - калькулятор;
-- локальная память/заметки;
+- локальная память;
 - фонарик;
 - громкость;
 - камера;
-- настройки Android;
-- Wi-Fi/Bluetooth/экран — открытие системных настроек;
+- настройки;
+- Wi-Fi / Bluetooth / экран;
 - календарь;
-- музыкальное приложение;
+- музыка;
 - набор номера;
-- подготовка SMS;
-- системный Voice Assistant / Lock Screen entry point.
+- SMS.
 
-## Важно
-Уровень ChatGPT-класса LLM, локальное image generation и text-to-video намеренно не маскируются под готовые функции: для них требуется соответствующая локальная модель и аппаратно-зависимый runtime. В этот базовый быстрый APK они не добавлены как фиктивные заглушки.
+Неподдерживаемые команды не маскируются под выполненные.
 
-## JARVIS v5.1 — Voice Assistant / Wake Word
+## GitHub
+Workflow использует Gradle 8.11.1 и Java 17 и собирает `app-debug.apk` как artifact.
 
-This revision fixes the assistant selection flow by using Android's `RoleManager.ROLE_ASSISTANT` request instead of merely opening generic voice-input settings. The app exposes a proper `VoiceInteractionService` and a keyguard-capable session.
-
-It also adds an optional **«Джарвис» wake-word bridge**. When enabled by the user, a lightweight foreground microphone service listens in short recognition windows and opens JARVIS when it hears the name. This is intentionally optional because continuous microphone recognition has battery/privacy implications and is constrained by Android/OEM policies.
-
-The visual direction is a dark, blue/cyan HUD with a central JARVIS Core, state transitions (LISTENING / THINKING / EXECUTING / SPEAKING), and a dedicated system-assistant card.
-
-No cloud AI/API was added.
-
-## v5.1 visual redesign
-
-The UI has been redesigned against the supplied JARVIS reference: black/deep-navy surfaces, brighter cyan-blue neon core, concentric HUD rings, compact header, voice-first hierarchy, conversation card, voice-call controls, system-assistant controls and compact bottom navigation. The central core is drawn with Canvas to keep animation lightweight and avoid heavy bitmap/blur rendering.
-
-The user reference is included at `docs/JARVIS_UI_REFERENCE_USER.png`; the internal visual prompt is documented in `docs/JARVIS_DESIGN_PROMPT.md`.
+## Ограничение
+Это быстрый локальный foundation. Полноценная локальная LLM уровня ChatGPT, image generation и text-to-video требуют отдельных локальных моделей и аппаратно-зависимого runtime; фиктивных заглушек под эти функции нет.
