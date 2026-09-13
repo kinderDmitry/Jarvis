@@ -19,7 +19,11 @@ jobs:
       - name: Build release APK
         run: gradle --no-daemon --stacktrace :app:assembleRelease
       - name: Verify release artifact
-        run: test -s app/build/outputs/apk/release/app-release.apk
+        run: |
+          test -s app/build/outputs/apk/release/app-release.apk
+          file app/build/outputs/apk/release/app-release.apk
+          unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
+          echo 'Release APK verified'
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
