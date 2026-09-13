@@ -1,18 +1,20 @@
-# JARVIS 5.5 — Web Agent
+# JARVIS Home AI Multitool — 5.8 Professional HUD Voice
 
-Voice-first Android assistant with a premium dark/cyan HUD interface.
+Обновление существующего проекта JARVIS 5.7. Основной приоритет этой версии — профессиональный чёрно-синий HUD-интерфейс и стабильный голосовой контур.
 
-## What changed
-- Fixed `RecognitionListener` bridge with `onEvent(int, Bundle)`.
-- Added INTERNET permission and a dependency-free web retrieval layer.
-- Unknown questions are searched online instead of returning a canned local-only message.
-- Fast deterministic commands stay local for low latency.
-- Main screen is voice-first: large JARVIS Core, compact chat, microphone action and four useful quick commands.
-- System-assistant and voice configuration remain in Settings, not on the home screen.
-- No documentation, reference PNGs, demo assets or unused design files are included.
+## Что изменено
+- Полностью переработана композиция главного экрана: JARVIS CORE теперь является визуальным центром, без прилипания к верхней части экрана.
+- Добавлена единая сетка отступов, тёмные стеклянные поверхности, тонкие синие контуры и спокойное неоновое свечение.
+- Ответ JARVIS вынесен в компактную премиальную карточку; голосовой ввод остаётся главным действием.
+- Добавлена нижняя навигационная панель в едином стиле.
+- Увеличен центральный HUD-модуль и сохранена плавная анимация.
+- Улучшен выбор русского TTS-голоса: выбирается наиболее качественный доступный голос, включая сетевой вариант, если установленный движок его предоставляет; скорость и высота голоса настроены для более естественной подачи.
+- Исправлен критический `RemoteException` в `JarvisRecognitionService`: все IPC callback-вызовы теперь безопасно обрабатываются через `try/catch`.
+- Wake-word сервис защищён от наложения нескольких циклов `startListening`, а перезапуск после ошибок выполняется контролируемо.
+- Существующие команды, интернет-поиск, таймер, будильник, фонарик, громкость, камера, настройки, память, системный ассистент и lock-screen путь сохранены.
 
-## Build
-`gradle --no-daemon --stacktrace :app:assembleDebug`
-
-## Network retrieval
-The current WebSearchEngine uses public Wikipedia and DuckDuckGo endpoints and does not require an API key. It is a retrieval layer, not a general-purpose LLM. A future AI provider can be inserted behind the same engine interface without changing the UI.
+## Сборка
+```
+gradle --no-daemon --stacktrace :app:assembleDebug
+```
+APK: `app/build/outputs/apk/debug/app-debug.apk`
