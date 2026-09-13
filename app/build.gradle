@@ -3,11 +3,28 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.jarvis.homemultitool'
     compileSdk 35
+    signingConfigs {
+        jarvisRelease {
+            storeFile file('../jarvis-release.jks')
+            storePassword 'jarvis-release-2026'
+            keyAlias 'jarvis'
+            keyPassword 'jarvis-release-2026'
+        }
+    }
     defaultConfig {
         applicationId 'com.jarvis.homemultitool'
         minSdk 26
         targetSdk 35
-        versionCode 13
-        versionName '5.9.0-professional-hud'
+        versionCode 14
+        versionName '5.10.0-professional-hud'
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.jarvisRelease
+            minifyEnabled false
+        }
+        debug {
+            signingConfig signingConfigs.jarvisRelease
+        }
     }
 }
