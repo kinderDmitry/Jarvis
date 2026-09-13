@@ -109,7 +109,11 @@ public final class JarvisEngine {
         for(int i=0;i<packagesAndAnswer.length-1;i++){
             String pkg=packagesAndAnswer[i];
             if(pkg==null||pkg.trim().isEmpty())continue;
-            try{Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);if(launch!=null){launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);reply(answer);return;}}catch(Throwable ignored){}
+            try{Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);if(launch!=null){launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);reply(answer);return;}}catch(Throwable ignored){
+                // Android may block an activity launch when the request originated in a background service.
+                // Route the already-resolved package through the visible JARVIS activity as a safe fallback.
+                try{Intent bridge=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);bridge.putExtra("LAUNCH_PACKAGE",pkg);context.startActivity(bridge);reply(answer);return;}catch(Throwable ignoredAgain){}
+            }
         }
         if(launchInstalledApp(original,normalized))return;
         reply("Не нашёл приложение «"+hint+"» на этом телефоне.");
@@ -133,7 +137,7 @@ public final class JarvisEngine {
                 if(pkg.contains(qq.replace(' ','.')))sc+=30;
                 if(sc>score){score=sc;best=ri;}
             }
-            if(best!=null&&score>=40){Intent launch=new Intent(Intent.ACTION_MAIN);launch.addCategory(Intent.CATEGORY_LAUNCHER);launch.setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name));launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);reply("Открываю "+best.loadLabel(pm)+".");return true;}
+            if(best!=null&&score>=40){Intent launch=new Intent(Intent.ACTION_MAIN);launch.addCategory(Intent.CATEGORY_LAUNCHER);launch.setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name));launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{context.startActivity(launch);reply("Открываю "+best.loadLabel(pm)+".");return true;}catch(Throwable blocked){try{Intent bridge=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);bridge.putExtra("LAUNCH_PACKAGE",best.activityInfo.packageName);context.startActivity(bridge);reply("Открываю "+best.loadLabel(pm)+".");return true;}catch(Throwable ignored){}}}
         }catch(Throwable ignored){}
         return false;
     }

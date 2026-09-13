@@ -54,8 +54,8 @@ public final class JarvisVoiceManager {
                 if(l==null||!"ru".equalsIgnoreCase(l.getLanguage())) continue;
                 String n=(v.getName()==null?"":v.getName()).toLowerCase(Locale.ROOT);
                 int score=0;
-                if(!v.isNetworkConnectionRequired()) score+=35;
-                if(v.getQuality()>=Voice.QUALITY_HIGH) score+=20; else if(v.getQuality()>=Voice.QUALITY_NORMAL) score+=10;
+                if(v.getQuality()>=Voice.QUALITY_HIGH) score+=45; else if(v.getQuality()>=Voice.QUALITY_NORMAL) score+=20;
+                if(!v.isNetworkConnectionRequired()) score+=12; else score+=5;
                 if(MALE.equals(gender)){
                     if(n.matches(".*(male|man|муж|мужск|мужчина|алекс|иван|павел|серг|андре|михаил|никол|дмитр).*")) score+=120;
                     if(n.matches(".*(female|woman|жен|женск|женщина).*")) score-=120;

@@ -29,16 +29,17 @@ public class MainActivity extends Activity {
 
     private int dp(float v){return(int)(v*getResources().getDisplayMetrics().density+.5f);}
     private TextView txt(String s,float sp){
-        TextView v=new TextView(this); v.setText(s); v.setTextColor(WHITE); v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,sp);
-        v.setIncludeFontPadding(true); v.setGravity(Gravity.CENTER_VERTICAL); v.setMaxLines(Integer.MAX_VALUE); return v;
+        TextView v=new TextView(this); v.setText(s); v.setTextColor(WHITE); float scale=Math.min(getResources().getConfiguration().fontScale,1.15f); v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,sp/scale);
+        v.setIncludeFontPadding(true); v.setGravity(Gravity.CENTER_VERTICAL); v.setHorizontallyScrolling(false); v.setMaxLines(Integer.MAX_VALUE); return v;
     }
     private GradientDrawable bg(int stroke,int fill,float radius){GradientDrawable g=new GradientDrawable();g.setColor(fill);g.setCornerRadius(dp(radius));if(stroke>0)g.setStroke(dp(1),stroke);return g;}
     private LinearLayout.LayoutParams lp(int w,int h,int l,int t,int r,int b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(w,h);p.setMargins(dp(l),dp(t),dp(r),dp(b));return p;}
     private TextView button(String label,View.OnClickListener click){
         TextView v=txt(label,13); v.setGravity(Gravity.CENTER); v.setTypeface(Typeface.DEFAULT,Typeface.BOLD); v.setTextColor(WHITE);
-        v.setPadding(dp(12),dp(7),dp(12),dp(7)); v.setBackground(bg(BORDER,0xD9071420,18)); v.setOnClickListener(click);
+        v.setPadding(dp(10),dp(4),dp(10),dp(4)); v.setBackground(bg(BORDER,0xD9071420,18)); v.setOnClickListener(click);
         boolean longText=label.length()>22; v.setSingleLine(!longText); v.setMaxLines(longText?2:1);
-        v.setEllipsize(longText?null:android.text.TextUtils.TruncateAt.END); v.setMinHeight(dp(longText?54:48));
+        v.setEllipsize(android.text.TextUtils.TruncateAt.END); v.setMinHeight(dp(longText?54:48)); v.setMaxHeight(dp(longText?58:52));
+        if(Build.VERSION.SDK_INT>=26)v.setAutoSizeTextTypeUniformWithConfiguration(longText?8:9,13,1,android.util.TypedValue.COMPLEX_UNIT_SP);
         return v;
     }
     private TextView iconButton(String icon,View.OnClickListener click){TextView v=txt(icon,24);v.setGravity(Gravity.CENTER);v.setTextColor(CYAN);v.setBackground(bg(BORDER,0xC9071420,18));v.setOnClickListener(click);return v;}
@@ -50,9 +51,29 @@ public class MainActivity extends Activity {
         if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},REQ_NOTIFY);
         engine=new JarvisEngine(this,new JarvisEngine.Callback(){public void reply(String s){speak(s);}public void state(String s){setState(s);}});
         voice=new JarvisVoiceManager(this); voice.init(null); initSpeech();
-        String q=getIntent().getStringExtra("WAKE_QUERY");
-        if(q!=null&&!q.trim().isEmpty())main.postDelayed(()->command(q),250);
-        else if(getIntent().getBooleanExtra("LOCKSCREEN_ASSIST",false))main.postDelayed(this::listen,450);
+        handleIncomingIntent(getIntent());
+    }
+
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent); setIntent(intent); handleIncomingIntent(intent);
+    }
+
+    private void handleIncomingIntent(Intent intent){
+        if(intent==null)return;
+        String q=intent.getStringExtra("WAKE_QUERY");
+        String launchPackage=intent.getStringExtra("LAUNCH_PACKAGE");
+        if(q!=null&&!q.trim().isEmpty())main.postDelayed(()->command(q),220);
+        else if(launchPackage!=null&&!launchPackage.trim().isEmpty())main.postDelayed(()->launchPackage(launchPackage),120);
+        else if(intent.getBooleanExtra("LOCKSCREEN_ASSIST",false))main.postDelayed(this::listen,450);
+    }
+
+    private void launchPackage(String packageName){
+        try{
+            Intent launch=getPackageManager().getLaunchIntentForPackage(packageName);
+            if(launch==null)return;
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(launch);
+        }catch(Throwable ignored){}
     }
 
     private void immersive(){

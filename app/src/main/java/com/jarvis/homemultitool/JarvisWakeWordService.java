@@ -57,7 +57,7 @@ public class JarvisWakeWordService extends Service {
 
     private void check(Bundle b){
         if(b==null||processing)return;ArrayList<String> rs=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(rs==null)return;
-        for(String s:rs){if(s==null)continue;String x=s.toLowerCase(new Locale("ru")).replace('ё','е').trim();if(x.matches(".*\\bджарвис(у|а|ом)?\\b.*")){String q=x.replaceAll("(?iu)\\bджарвис(у|а|ом)?\\b"," ").replaceAll("\\s+"," ").trim();trigger(q);return;}}
+        for(String s:rs){if(s==null)continue;String x=s.toLowerCase(new Locale("ru")).replace('ё','е').trim();String compact=x.replaceAll("[^а-яa-z0-9]","");boolean wake=x.matches(".*\\bджарвис(у|а|ом)?\\b.*")||compact.contains("джарвис")||compact.contains("djarvis")||compact.contains("jarvis");if(wake){String q=x.replaceAll("(?iu)\\bджарвис(у|а|ом)?\\b"," ").replaceAll("(?iu)\\bjarvis\\b"," ").replaceAll("\\s+"," ").trim();trigger(q);return;}}
     }
 
     private void trigger(String q){
