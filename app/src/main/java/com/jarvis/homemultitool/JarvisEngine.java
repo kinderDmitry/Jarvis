@@ -58,8 +58,18 @@ public final class JarvisEngine {
         if(c.contains("позвони")||c.contains("набери номер")){dial(original);return;}
         if(c.contains("смс")||c.contains("сообщение")){sms(original);return;}
         if(c.contains("системным ассистентом")||c.contains("экран блокировки")){reply("Откройте настройки JARVIS и выберите его системным ассистентом Android. После этого вызов ассистента с экрана блокировки будет передаваться JARVIS.");return;}
-        if(c.contains("кто ты")||c.contains("что ты умеешь")){reply("Я JARVIS. Я могу разговаривать, выполнять команды телефона, ставить системные таймеры и искать актуальную информацию в интернете.");return;}
+        if(c.contains("кто ты")||c.contains("что ты умеешь")){reply("Я JARVIS. Я могу разговаривать, выполнять команды телефона, ставить системные таймеры и получать актуальную информацию из интернета.");return;}
+        if(c.contains("погод")||c.contains("температур")||c.contains("осадк")){
+            web.currentWeather(extractCity(original), new WebSearchEngine.Callback(){ public void result(String text,String source){reply(text);} public void state(String state){cb.state(state);} }); return;
+        }
         web.search(original, new WebSearchEngine.Callback(){ public void result(String text,String source){reply((source==null||source.isEmpty())?text:text+"\n\nИсточник: "+source);} public void state(String state){cb.state(state);} });
+    }
+    private String extractCity(String q){
+        String x=q==null?"":""+q;
+        Matcher m=Pattern.compile("(?i)(?:в|для|города?)\\s+([А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,})").matcher(x);
+        if(m.find()) return m.group(1);
+        if(x.toLowerCase(new Locale("ru")).contains("москв")) return "Москва";
+        return "Москва";
     }
     private void reply(String s){cb.reply(s);}
     private void save(String s){if(s.trim().isEmpty()){reply("Что именно сохранить?");return;}String old=prefs.getString("notes","");prefs.edit().putString("notes",old.isEmpty()?s:old+"\n• "+s).apply();reply("Сохранил в локальную память.");}

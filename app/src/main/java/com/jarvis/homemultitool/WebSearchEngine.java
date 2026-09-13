@@ -19,6 +19,46 @@ public final class WebSearchEngine {
     public interface Callback { void result(String text, String source); void state(String state); }
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+
+    public void currentWeather(final String city, final Callback callback) {
+        executor.execute(() -> {
+            callback.state("ПОЛУЧАЮ ПОГОДУ");
+            try {
+                String normalized = city == null ? "Москва" : city.trim();
+                String geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=" + Uri.encode(normalized) + "&count=1&language=ru&format=json";
+                JSONObject geo = new JSONObject(read(open(geoUrl)));
+                JSONArray results = geo.optJSONArray("results");
+                if(results==null || results.length()==0){ callback.result("Не удалось определить город для запроса погоды.",""); return; }
+                JSONObject place=results.getJSONObject(0);
+                double lat=place.getDouble("latitude"), lon=place.getDouble("longitude");
+                String placeName=place.optString("name",normalized);
+                String weatherUrl="https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto";
+                JSONObject w=new JSONObject(read(open(weatherUrl)));
+                JSONObject cur=w.getJSONObject("current");
+                double temp=cur.optDouble("temperature_2m",Double.NaN);
+                double feels=cur.optDouble("apparent_temperature",Double.NaN);
+                double hum=cur.optDouble("relative_humidity_2m",Double.NaN);
+                double wind=cur.optDouble("wind_speed_10m",Double.NaN);
+                int code=cur.optInt("weather_code",-1);
+                String condition=weatherDescription(code);
+                StringBuilder out=new StringBuilder("Сейчас в ").append(placeName).append(": ").append(fmt(temp)).append(" °C, ").append(condition);
+                if(!Double.isNaN(feels)) out.append(". Ощущается как ").append(fmt(feels)).append(" °C");
+                if(!Double.isNaN(hum)) out.append(". Влажность ").append(fmt(hum)).append("%");
+                if(!Double.isNaN(wind)) out.append(". Ветер ").append(fmt(wind)).append(" км/ч");
+                out.append("."); callback.result(out.toString(),"Open-Meteo");
+            } catch(Throwable e){ callback.result("Не удалось получить текущую погоду. Проверьте интернет-соединение.",""); }
+        });
+    }
+
+    private String fmt(double v){ if(Double.isNaN(v)) return "—"; return String.format(java.util.Locale.US,"%.1f",v).replace('.',','); }
+    private String weatherDescription(int code){
+        if(code==0) return "ясно"; if(code<=3) return "переменная облачность";
+        if(code==45||code==48) return "туман"; if(code>=51&&code<=57) return "морось";
+        if(code>=61&&code<=67) return "дождь"; if(code>=71&&code<=77) return "снег";
+        if(code>=80&&code<=82) return "ливень"; if(code==85||code==86) return "снегопад";
+        if(code>=95&&code<=99) return "гроза"; return "переменная погода";
+    }
+
     public void search(final String query, final Callback callback) {
         executor.execute(() -> {
             callback.state("ИЩУ В СЕТИ");

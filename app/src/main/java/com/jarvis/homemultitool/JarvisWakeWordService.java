@@ -34,7 +34,7 @@ public class JarvisWakeWordService extends Service {
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU")
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5)
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true)
-                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,true);
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,false);
         try{recognizer=(Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(this))?SpeechRecognizer.createOnDeviceSpeechRecognizer(this):SpeechRecognizer.createSpeechRecognizer(this);}catch(Throwable e){recognizer=null;}
         if(recognizer==null){stopSelf();return;}
         recognizer.setRecognitionListener(listener); running=true; startListening(300);
@@ -53,7 +53,7 @@ public class JarvisWakeWordService extends Service {
         public void onRmsChanged(float v){}
         public void onBufferReceived(byte[] b){}
         public void onEndOfSpeech(){listening=false;}
-        public void onError(int e){listening=false;startListening(650);}
+        public void onError(int e){listening=false;rearm(650);}
         public void onPartialResults(Bundle b){check(b);}
         public void onResults(Bundle b){check(b);listening=false;startListening(450);}
         public void onEvent(int a,Bundle b){}
@@ -77,6 +77,21 @@ public class JarvisWakeWordService extends Service {
             startActivity(i);
         }catch(Throwable ignored){}
         handler.postDelayed(()->{triggered=false;if(running)startListening(500);},1800);
+    }
+
+    private void rearm(long delay){
+        if(!running)return;
+        try{if(recognizer!=null)recognizer.cancel();}catch(Throwable ignored){}
+        handler.postDelayed(()->{
+            if(!running)return;
+            try{
+                if(recognizer!=null)recognizer.destroy();
+                recognizer=(Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(this))?SpeechRecognizer.createOnDeviceSpeechRecognizer(this):SpeechRecognizer.createSpeechRecognizer(this);
+                if(recognizer==null){rearm(1500);return;}
+                recognizer.setRecognitionListener(listener);
+                startListening(100);
+            }catch(Throwable e){rearm(1500);}
+        },delay);
     }
 
     private void startListening(long delay){
