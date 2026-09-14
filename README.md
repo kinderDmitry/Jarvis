@@ -36,3 +36,12 @@ The working container used for this archive does not have the Gradle CLI install
 
 ### Important platform behavior
 The wake-word implementation uses Android SpeechRecognizer in a foreground microphone service. Android/OEM restrictions can interrupt unrestricted always-on microphone recognition; selecting JARVIS as the Android Assistant remains the strongest system-wide invocation path available to this architecture.
+
+
+## 5.23 UI
+- Station-inspired premium conversational interface.
+- Removed quick-action clutter from the main screen.
+- Larger bottom composer and centered send control.
+- Full-screen immersive mode retained.
+- Settings navigation uses resilient Android settings intents.
+- VersionCode increased to 27 so an APK signed with the included release key can update 5.22 in place.
