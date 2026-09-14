@@ -2,6 +2,7 @@ package com.jarvis.homemultitool;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.role.RoleManager;
 import android.content.*;
 import android.content.pm.PackageManager;

@@ -41,7 +41,8 @@ public final class JarvisMemory {
             JSONObject exact=o.optJSONObject(k);
             if(exact!=null){ recordAliasUse(k,o,exact); return exact.optString("action",""); }
             String bestKey=""; double best=0;
-            for(String key:o.keySet()){
+            org.json.JSONArray names=o.names();
+            if(names!=null) for(int idx=0;idx<names.length();idx++){ String key=names.optString(idx);
                 JSONObject item=o.optJSONObject(key); if(item==null)continue;
                 double s=similarity(k,key);
                 if(s>best){best=s;bestKey=key;}
