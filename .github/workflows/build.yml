@@ -1,4 +1,4 @@
-name: JARVIS 5.24 Release
+name: JARVIS 5.31 Assistant Release
 on:
   workflow_dispatch:
   push:
@@ -24,7 +24,7 @@ jobs:
           file app/build/outputs/apk/release/app-release.apk
           unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
           echo 'Release APK verified'
-          echo 'JARVIS 5.24.0 ready for in-place update'
+          echo 'JARVIS 5.31.0 ready for in-place update'
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
