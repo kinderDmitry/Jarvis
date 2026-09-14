@@ -16,12 +16,12 @@ import java.util.regex.*;
 /** Deterministic local command brain with real device actions and live web/weather retrieval. */
 public final class JarvisEngine {
     public interface Callback { void reply(String text); void state(String state); }
-    private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web=new WebSearchEngine();
+    private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web=new WebSearchEngine(); private final JarvisMemory memory; private final VideoSearchEngine video=new VideoSearchEngine();
     private String lastCity="Москва", lastTopic="", lastUserMessage="";
     private String lastAssistantQuestion="";
     private String pendingMusicTrack="";
     private String pendingMusicApp="";
-    public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);}
+    public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);memory=new JarvisMemory(context);}
 
     public void handle(final String raw){
         try { handleInternal(raw); } catch (Throwable fatal) { cb.state("ГОТОВ"); cb.reply("Я не смог безопасно выполнить эту команду. Попробуйте сказать её иначе."); }
@@ -34,7 +34,8 @@ public final class JarvisEngine {
         if(handleConversation(c))return;
         if(isGreeting(c)&&!(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь"))){reply(greeting(c));return;}
         if(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь")){lastAssistantQuestion="how_user";reply("Отлично, сэр. Работаю стабильно и готов помочь. А у вас как дела?");return;}
-        if(c.contains("спасибо")||c.contains("благодарю")){reply("Всегда пожалуйста, сэр.");return;}
+        if(c.contains("спасибо")||c.contains("благодарю")){reply("Всегда пожалуйста, сэр. Рад быть полезным.");return;}
+        if(c.matches(".*\b(что нового|как настроение|ты устал|ты занят|чем занимаешься|что делаешь)\b.*")){reply(c.contains("что нового")?"Я здесь, слежу за вашим контекстом и готов помочь.":"У меня всё штатно. Я готов работать с вами.");return;}
         if(c.contains("доброй ночи")){reply("Доброй ночи, сэр. Я буду готов, когда вы вернётесь.");return;}
         if(c.contains("который час")||c.equals("время")||c.contains("сколько времени")){reply("Сейчас "+new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date())+".");return;}
         if(c.contains("какая дата")||c.contains("какое сегодня число")||c.contains("сегодняшняя дата")){reply("Сегодня "+new SimpleDateFormat("d MMMM yyyy",new Locale("ru","RU")).format(new Date())+".");return;}
@@ -54,6 +55,9 @@ public final class JarvisEngine {
         if(c.contains("открой настройки")||c.equals("настройки")){open(new Intent(Settings.ACTION_SETTINGS),"Открываю системные настройки.");return;}
         if(c.contains("календар")){open(new Intent(Intent.ACTION_VIEW,Uri.parse("content://com.android.calendar/time/")),"Открываю календарь.");return;}
 
+        if(c.matches(".*(пауза|поставь на паузу|останови музыку|стоп музыку|продолжи музыку|возобнови музыку|следующ(ий|ую)|предыдущ(ий|ую)).*")){handleMediaControl(c);return;}
+        if(c.matches(".*(фильм|сериал|кино|видео).*") && c.matches(".*(найди|покажи|ищи|где посмотреть|включи).*") ){String q=extractVideoQuery(original);video.search(q,new VideoSearchEngine.Callback(){public void result(String t){reply(t);}public void state(String s){cb.state(s);}});return;}
+        if(c.matches(".*(управление плеером|доступ к медиасеансам|доступ к медиа).*"){open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),"Открываю доступ к управлению медиаплеером.");return;}
         if(c.matches(".*(яндекс\\s*музык|я\\s*музык|вк\\s*музык|vk\\s*музык|музыку|музыка).*")){handleMusic(original,c);return;}
         if(c.matches(".*\\b(ютуб|youtube)\\b.*")){launchNamedApp(original,c,"YouTube","com.google.android.youtube","com.google.android.youtube.tv","Открываю YouTube.");return;}
         if(c.matches(".*\\b(телеграм|telegram)\\b.*")){launchNamedApp(original,c,"Telegram","org.telegram.messenger","Открываю Telegram.");return;}
@@ -67,12 +71,16 @@ public final class JarvisEngine {
         if(c.contains("позвони")||c.contains("набери номер")){dial(original);return;}
         if(c.contains("смс")||c.contains("сообщение")){sms(original);return;}
         if(c.contains("новости сейчас")||c.equals("новости")||c.startsWith("новости ")){web.news(webCallback());return;}
-        if(c.contains("кто ты")||c.contains("что ты умеешь")){reply("Я JARVIS — персональный голосовой помощник. Я понимаю естественные фразы, веду короткий контекстный диалог, получаю актуальные данные из сети, выполняю команды телефона, открываю приложения, ставлю таймеры и будильники и храню локальные заметки.");return;}
+        if(c.contains("кто ты")||c.contains("что ты умеешь")){reply("Я JARVIS — персональный голосовой помощник. Я понимаю естественные фразы, веду контекстный диалог, запоминаю ваши предпочтения, управляю приложениями и мультимедиа, выполняю команды телефона и использую интернет, когда действительно нужен внешний ответ.");return;}
         if(c.contains("что ты помнишь")||c.contains("мои заметки")){String n=prefs.getString("notes","");reply(n.isEmpty()?"В локальной памяти пока ничего нет.":n);return;}
-        if(c.contains("забудь всё")||c.contains("очисти память")){prefs.edit().remove("notes").apply();reply("Локальная память очищена.");return;}
+        if(c.contains("забудь всё")||c.contains("очисти память")){prefs.edit().remove("notes").apply();memory.clear();reply("Локальная память очищена.");return;}
         if(c.matches("^(запиши|запомни|сохрани).*")){save(original.replaceFirst("(?iu)^(запиши|запомни|сохрани)\\s*:??\\s*",""));return;}
-        if(isCasual(c)){reply(casualReply(c));return;}
-        web.search(original,new WebSearchEngine.Callback(){public void result(String t,String s){reply((s==null||s.isEmpty())?t:t+"\n\nИсточник: "+s);}public void state(String s){cb.state(s);}});
+        if(c.matches(".*(научи|запомни команду|если я говорю).*(делай|выполняй).*") ){String z=original.replaceFirst("(?iu).*?(?:научи|запомни команду|если я говорю)\\s*","");Matcher lm=Pattern.compile("(?iu)^(.+?)\\s+(?:то\\s+)?(?:делай|выполняй)\\s+(.+)$").matcher(z);if(lm.find()){String phrase=lm.group(1).trim(),action=lm.group(2).trim();memory.learnAlias(phrase,action);reply("Запомнил. Когда вы скажете «"+phrase+"», я буду выполнять: «"+action+"»." );}else reply("Скажите: «Научи: когда я говорю открыть музыку, выполняй открой Яндекс Музыку»." );return;}
+        String learned=memory.alias(c);
+        if(!learned.isEmpty()&&!learned.equalsIgnoreCase(original)){cb.state("ОБУЧЕННАЯ КОМАНДА");handleInternal(learned);return;}
+        if(isCasual(c)||isShortConversation(c)){reply(casualReply(c));return;}
+        if(isExplicitInformationRequest(c)){web.search(original,new WebSearchEngine.Callback(){public void result(String t,String s){reply((s==null||s.isEmpty())?t:t+"\n\nИсточник: "+s);}public void state(String s){cb.state(s);}});return;}
+        reply("Я понял запрос, но не хочу угадывать. Скажите, что именно нужно сделать, например: «открой приложение», «включи музыку», «найди фильм» или «запомни, что …». После вашего уточнения я сохраню эту формулировку как привычную команду.");
     }
     private boolean handleConversation(String c){
         if(lastAssistantQuestion.equals("music_app")){
@@ -88,7 +96,7 @@ public final class JarvisEngine {
             }
             if(c.matches(".*\\b(а ты|а у тебя|ты как|а сам)\\b.*")){lastAssistantQuestion="";reply("У меня всё штатно, сэр. Я в рабочем режиме и готов продолжать.");return true;}
         }
-        if(c.matches("^(понятно|ясно|ладно|хорошо|окей|ок|ага|угу)$")){reply("Принято, сэр.");return true;}
+        if(c.matches("^(понятно|ясно|ладно|хорошо|окей|ок|ага|угу|нормально|все нормально|все хорошо|хорошо, спасибо|нормально, спасибо)$")){lastAssistantQuestion="";reply(c.contains("нормально")?"Рад это слышать, сэр.":"Принято, сэр.");return true;}
         if(c.matches("^(кто я|ты меня знаешь|ты меня помнишь)$")){String n=prefs.getString("user_name","");reply(n.isEmpty()?"Пока я не знаю, как к вам обращаться. Скажите: запомни, что меня зовут ...":"Конечно, сэр. Я помню, что вас зовут "+n+".");return true;}
         if(c.matches("^запомни,? что меня зовут .+")){String n=c.replaceFirst("(?iu)^запомни,? что меня зовут\\s+","").trim();if(!n.isEmpty()){prefs.edit().putString("user_name",n).apply();reply("Запомнил. Буду обращаться к вам соответственно.");}return true;}
         return false;
@@ -133,7 +141,7 @@ public final class JarvisEngine {
             String tr=track==null?"":track.trim();
             String low=tr.toLowerCase(new Locale("ru"));
             boolean playlist=low.contains("плейлист");
-            boolean likedPlaylist=low.matches(".*(моя музыка|мои песни|понравивш|любим|лайк).*" );
+            boolean likedPlaylist=low.matches(".*(моя музыка|мои песни|понравивш|любим|лайк|нравится|мне нравится).*" );
             if(!tr.isEmpty()&&!playlist&&!likedPlaylist){
                 String url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(tr):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(tr):"https://www.google.com/search?q="+Uri.encode(tr+" музыка");
                 try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);search.setPackage(pkg);context.startActivity(search);}catch(Throwable ignored){try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(search);}catch(Throwable ignored2){}}
@@ -145,14 +153,33 @@ public final class JarvisEngine {
                 reply("Открываю поиск плейлиста «"+query+"» в музыкальном приложении.");
             }else{
                 scheduleMediaPlay(1100);
-                if(likedPlaylist) reply("Открываю музыкальное приложение и пытаюсь запустить ваше избранное или сохранённую музыку.");
+                if(likedPlaylist) reply("Открываю ваше музыкальное приложение. Если в нём уже выбран ваш плейлист «Мне нравится», запускаю воспроизведение; для прямого открытия приватного плейлиста доступ зависит от возможностей самого приложения.");
                 else reply("Открываю музыкальное приложение.");
             }
         }catch(Throwable e){reply("Не удалось открыть музыкальное приложение.");}
     }
     private void scheduleMediaPlay(long delay){
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{try{AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);if(am!=null){am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_MEDIA_PLAY));am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_MEDIA_PLAY));}}catch(Throwable ignored){}},delay);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
+            try{
+                if(JarvisMediaSessionService.control("play")) return;
+                AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
+                if(am!=null){
+                    am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_MEDIA_PLAY));
+                    am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_MEDIA_PLAY));
+                }
+            }catch(Throwable ignored){}
+        },delay);
     }
+
+    private void handleMediaControl(String c){
+        String action=c.contains("пауза")||c.contains("стоп")?"pause":c.contains("продолж")||c.contains("возобнов")?"play":c.contains("предыдущ")?"previous":"next";
+        boolean ok=JarvisMediaSessionService.control(action);
+        if(!ok){try{AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);int key="play".equals(action)?android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:"next".equals(action)?android.view.KeyEvent.KEYCODE_MEDIA_NEXT:android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS;am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,key));am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,key));ok=true;}catch(Throwable ignored){}}
+        if(ok)reply("Готово, сэр.");else reply("Не вижу активного плеера. Откройте музыкальное приложение или дайте JARVIS доступ к управлению медиасеансами.");
+    }
+    private String extractVideoQuery(String original){String q=original.replaceFirst("(?iu)^(.*?)(найди|покажи|ищи|где посмотреть|включи)\\s*"," ").trim();q=q.replaceFirst("(?iu)\\s+(фильм|сериал|кино|видео)\\s*"," ").trim();return q.isEmpty()?original:q;}
+    private boolean isShortConversation(String c){return c.length()<=28 && c.matches(".*\\b(нормально|хорошо|плохо|отлично|спасибо|пожалуйста|устал|занят|скучно|ясно|понятно)\\b.*");}
+    private boolean isExplicitInformationRequest(String c){return c.matches(".*\\b(найди|ищи|поищи|что такое|кто такой|кто такая|где|когда|почему|сколько стоит|курс|цена|новости|погода|информация|расскажи про)\\b.*");}
 
     private WebSearchEngine.Callback webCallback(){return new WebSearchEngine.Callback(){public void result(String t,String s){reply(t);}public void state(String s){cb.state(s);}};}
     private boolean isCasual(String c){
@@ -181,7 +208,7 @@ public final class JarvisEngine {
         Matcher m=Pattern.compile("(?iu)(?:в|для|города?|городе)\\s+([А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,}(?:\\s+[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,})?)").matcher(x);if(m.find())return m.group(1).trim();return lastCity;
     }
     private void battery(){try{android.os.BatteryManager bm=(android.os.BatteryManager)context.getSystemService(Context.BATTERY_SERVICE);int p=bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);reply("Заряд батареи: "+p+" процентов.");}catch(Throwable e){reply("Не удалось получить уровень заряда.");}}
-    private void reply(String s){cb.reply(s);}
+    private void reply(String s){if(s==null)s="";memory.addTurn(lastUserMessage,s);cb.reply(s);}
     private void save(String s){if(s.trim().isEmpty()){reply("Что именно сохранить?");return;}String old=prefs.getString("notes","");prefs.edit().putString("notes",old.isEmpty()?"• "+s:old+"\n• "+s).apply();reply("Сохранил в локальную память.");}
     private int parseDuration(String s){Matcher m=Pattern.compile("(\\d+)\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч)").matcher(s);if(!m.find())return 0;int n=Integer.parseInt(m.group(1));String u=m.group(2);if(u.startsWith("сек"))return n;if(u.startsWith("час")||u.equals("ч"))return n*3600;return n*60;}
     private void calculator(String c){String x=c.replace("умножить на","*").replace("умножить","*").replace("помножить","*").replace("поделить на","/").replace("поделить","/").replace("делить на","/").replace("плюс","+").replace("минус","-").replace(',','.').replaceAll("[^0-9+*/.\\-]","");Matcher m=Pattern.compile("(-?\\d+(?:\\.\\d+)?)([+*/-])(-?\\d+(?:\\.\\d+)?)").matcher(x);if(!m.find()){reply("Скажите выражение, например: 125 умножить на 8.");return;}try{double a=Double.parseDouble(m.group(1)),b=Double.parseDouble(m.group(3));if("/".equals(m.group(2))&&b==0){reply("На ноль делить нельзя.");return;}double r="+".equals(m.group(2))?a+b:"-".equals(m.group(2))?a-b:"*".equals(m.group(2))?a*b:a/b;reply("Результат: "+(r==Math.rint(r)?Long.toString((long)r):String.format(Locale.US,"%.6f",r).replaceAll("0+$","" ).replaceAll("\\.$","")));}catch(Exception e){reply("Не удалось вычислить выражение.");}}
@@ -204,11 +231,11 @@ public final class JarvisEngine {
     private boolean bridgeLaunch(String pkg){
         try{Intent bridge=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);bridge.putExtra("LAUNCH_PACKAGE",pkg);context.startActivity(bridge);return true;}catch(Throwable ignored){return false;}
     }
-    private boolean launchInstalledApp(String original,String normalized){try{PackageManager pm=context.getPackageManager();Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);String q=normalized.replaceFirst("(?iu)^(открой|запусти|включи|открывай|запускай|зайди в)\\s+","").replaceFirst("(?iu)^приложение\\s+","").trim();if(q.isEmpty())return false;android.content.pm.ResolveInfo best=null;int score=0;for(android.content.pm.ResolveInfo ri:apps){if(ri.activityInfo==null||context.getPackageName().equals(ri.activityInfo.packageName))continue;String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);String qq=q.replace('ё','е');int sc=0;if(label.equals(qq))sc=120;else if(label.contains(qq)||qq.contains(label))sc=85;for(String w:qq.split("\\s+"))if(w.length()>2&&label.contains(w))sc+=18;if(pkg.contains(qq.replace(' ','.')))sc+=30;if(sc>score){score=sc;best=ri;}}if(best!=null&&score>=35){Intent launch=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{context.startActivity(launch);reply("Открываю "+best.loadLabel(pm)+".");return true;}catch(Throwable blocked){if(bridgeLaunch(best.activityInfo.packageName)){reply("Открываю "+best.loadLabel(pm)+".");return true;}}}}catch(Throwable ignored){}return false;}
+    private boolean launchInstalledApp(String original,String normalized){try{PackageManager pm=context.getPackageManager();Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);String q=normalized.replaceFirst("(?iu)^(открой|запусти|включи|открывай|запускай|зайди в)\\s+","").replaceFirst("(?iu)^приложение\\s+","").trim();if(q.isEmpty())return false;android.content.pm.ResolveInfo best=null;int score=0;for(android.content.pm.ResolveInfo ri:apps){if(ri.activityInfo==null||context.getPackageName().equals(ri.activityInfo.packageName))continue;String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);String qq=q.replace('ё','е');int sc=0;if(label.equals(qq))sc=120;else if(label.contains(qq)||qq.contains(label))sc=85;for(String w:qq.split("\\s+"))if(w.length()>2&&label.contains(w))sc+=18;if(pkg.contains(qq.replace(' ','.')))sc+=30;if(sc>score){score=sc;best=ri;}}if(best!=null&&score>=35){Intent launch=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{context.startActivity(launch);memory.remember("last_app",best.activityInfo.packageName);reply("Открываю "+best.loadLabel(pm)+".");return true;}catch(Throwable blocked){if(bridgeLaunch(best.activityInfo.packageName)){reply("Открываю "+best.loadLabel(pm)+".");return true;}}}}catch(Throwable ignored){}return false;}
     private void dial(String raw){String d=raw.replaceAll("[^0-9+]","");if(d.length()<5){reply("Назовите номер телефона.");return;}open(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+d)),"Открываю набор номера.");}
     private void sms(String raw){String d=raw.replaceAll("[^0-9+]","");Intent i=new Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:"+d));i.putExtra("sms_body",raw);open(i,"Открываю сообщения.");}
     private void open(Intent i,String answer){try{i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(i);reply(answer);}catch(Throwable e){reply("Не удалось открыть системное действие.");}}
-    public void shutdown(){web.shutdown();}
+    public void shutdown(){web.shutdown();video.shutdown();}
 
     static final class TimerTool {private static final int TIMER_ID=78;static void start(Context c,int seconds,Callback cb){if(seconds<=0){cb.reply("Не удалось определить длительность таймера.");return;}try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);long at=System.currentTimeMillis()+seconds*1000L;if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));cb.reply("Android требует разрешение на точные будильники. После выдачи разрешения повторите команду.");return;}if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);else am.setExact(AlarmManager.RTC_WAKEUP,at,pi);c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().putLong("end",at).putInt("seconds",seconds).apply();cb.reply("Таймер установлен на "+format(seconds)+".");}catch(Throwable e){cb.reply("Не удалось установить таймер. Проверьте разрешение на точные будильники.");}}static void cancel(Context c,Callback cb){try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(pi);pi.cancel();c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().clear().apply();cb.reply("Таймер отменён.");}catch(Throwable e){cb.reply("Не удалось отменить таймер.");}}static String format(int s){if(s>=3600)return(s/3600)+" ч";if(s%60==0)return(s/60)+" мин";return s+" сек";}}
     static final class AlarmTool {static void schedule(Context c,String text,Callback cb){Matcher m=Pattern.compile("(?:на|в)\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(text);if(!m.find()){cb.reply("Скажите время, например: будильник на 07:00.");return;}try{int hh=Integer.parseInt(m.group(1)),mm=m.group(2)==null?0:Integer.parseInt(m.group(2));if(hh>23||mm>59)throw new Exception();Calendar cal=Calendar.getInstance();cal.set(Calendar.HOUR_OF_DAY,hh);cal.set(Calendar.MINUTE,mm);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);if(cal.before(Calendar.getInstance()))cal.add(Calendar.DAY_OF_YEAR,1);AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_ALARM");PendingIntent pi=PendingIntent.getBroadcast(c,77,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));cb.reply("Откройте разрешение на точные будильники, затем повторите команду.");return;}if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);else am.setExact(AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);cb.reply(String.format(Locale.getDefault(),"Будильник установлен на %02d:%02d.",hh,mm));}catch(Exception e){cb.reply("Не удалось установить будильник.");}}}

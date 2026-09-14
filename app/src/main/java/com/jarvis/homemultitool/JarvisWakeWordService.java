@@ -35,13 +35,23 @@ public class JarvisWakeWordService extends Service {
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5)
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true)
                 .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,false);
-        running=true; createRecognizer(); startListening(350);
+        running=true; createRecognizer(); if(recognizer!=null) startListening(350); else handler.postDelayed(()->{if(running){createRecognizer();startListening(100);}},1500);
     }
 
     private boolean startForegroundCompat(){
         try{Intent open=new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);PendingIntent pi=PendingIntent.getActivity(this,72,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);b.setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentTitle("JARVIS • фоновый вызов").setContentText("Ожидание фразы «Джарвис»").setContentIntent(pi).setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).setOnlyAlertOnce(true);if(Build.VERSION.SDK_INT>=29)startForeground(NOTIFY,b.build(),android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);else startForeground(NOTIFY,b.build());return true;}catch(Throwable e){stopSelf();return false;}}
     private void updateNotification(String state){try{NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);b.setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentTitle("JARVIS • фоновый вызов").setContentText(state==null?"Ожидание фразы «Джарвис»":state).setOngoing(true).setOnlyAlertOnce(true);nm.notify(NOTIFY,b.build());}catch(Throwable ignored){}}
-    private void createRecognizer(){try{if(recognizer!=null)recognizer.destroy();recognizer=SpeechRecognizer.createSpeechRecognizer(this);if(recognizer!=null)recognizer.setRecognitionListener(listener);}catch(Throwable e){recognizer=null;}}
+    private void createRecognizer(){
+        try{
+            if(recognizer!=null)recognizer.destroy();
+            if(Build.VERSION.SDK_INT>=31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this))
+                recognizer=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+            else recognizer=SpeechRecognizer.createSpeechRecognizer(this);
+            if(recognizer!=null)recognizer.setRecognitionListener(listener);
+        }catch(Throwable e){
+            try{recognizer=SpeechRecognizer.createSpeechRecognizer(this);recognizer.setRecognitionListener(listener);}catch(Throwable ignored){recognizer=null;}
+        }
+    }
 
     private final RecognitionListener listener=new RecognitionListener(){
         public void onReadyForSpeech(Bundle b){listening=true;retry=500;updateNotification("СЛУШАЮ ФРАЗУ «ДЖАРВИС»");}
