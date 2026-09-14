@@ -17,14 +17,15 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Build release APK
-        run: gradle --no-daemon --stacktrace :app:assembleRelease
+        run: gradle --no-daemon --stacktrace clean :app:assembleRelease
       - name: Verify release artifact
         run: |
           test -s app/build/outputs/apk/release/app-release.apk
           file app/build/outputs/apk/release/app-release.apk
           unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
           echo 'Release APK verified'
-          echo 'JARVIS 5.31.0 ready for in-place update'
+          echo 'JARVIS 5.31.x release verified'
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -E 'JarvisVoiceInteractionService|JarvisVoiceSession' || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
