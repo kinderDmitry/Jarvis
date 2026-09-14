@@ -56,6 +56,13 @@ public final class JarvisMemory {
         try{item.put("uses",item.optInt("uses",0)+1);root.put(key,item);p.edit().putString("aliases",root.toString()).apply();}catch(Throwable ignored){}
     }
 
+    private static Iterable<String> jsonKeys(JSONObject o){
+        ArrayList<String> keys=new ArrayList<>();
+        JSONArray n=o.names();
+        if(n!=null) for(int i=0;i<n.length();i++) keys.add(n.optString(i));
+        return keys;
+    }
+
     private double similarity(String a,String b){
         Set<String> x=new HashSet<>(Arrays.asList(a.split(" "))); Set<String> y=new HashSet<>(Arrays.asList(b.split(" ")));
         x.remove(""); y.remove(""); if(x.isEmpty()||y.isEmpty())return 0;

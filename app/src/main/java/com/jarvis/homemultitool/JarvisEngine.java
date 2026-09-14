@@ -35,7 +35,7 @@ public final class JarvisEngine {
         if(isGreeting(c)&&!(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь"))){reply(greeting(c));return;}
         if(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь")){lastAssistantQuestion="how_user";reply("Отлично, сэр. Работаю стабильно и готов помочь. А у вас как дела?");return;}
         if(c.contains("спасибо")||c.contains("благодарю")){reply("Всегда пожалуйста, сэр. Рад быть полезным.");return;}
-        if(c.matches(".*\b(что нового|как настроение|ты устал|ты занят|чем занимаешься|что делаешь)\b.*")){reply(c.contains("что нового")?"Я здесь, слежу за вашим контекстом и готов помочь.":"У меня всё штатно. Я готов работать с вами.");return;}
+        if(c.matches(".*\\b(что нового|как настроение|ты устал|ты занят|чем занимаешься|что делаешь)\\b.*")){reply(c.contains("что нового")?"Я здесь, слежу за вашим контекстом и готов помочь.":"У меня всё штатно. Я готов работать с вами.");return;}
         if(c.contains("доброй ночи")){reply("Доброй ночи, сэр. Я буду готов, когда вы вернётесь.");return;}
         if(c.contains("который час")||c.equals("время")||c.contains("сколько времени")){reply("Сейчас "+new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date())+".");return;}
         if(c.contains("какая дата")||c.contains("какое сегодня число")||c.contains("сегодняшняя дата")){reply("Сегодня "+new SimpleDateFormat("d MMMM yyyy",new Locale("ru","RU")).format(new Date())+".");return;}
