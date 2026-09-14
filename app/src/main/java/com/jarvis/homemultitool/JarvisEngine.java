@@ -57,7 +57,7 @@ public final class JarvisEngine {
 
         if(c.matches(".*(пауза|поставь на паузу|останови музыку|стоп музыку|продолжи музыку|возобнови музыку|следующ(ий|ую)|предыдущ(ий|ую)).*")){handleMediaControl(c);return;}
         if(c.matches(".*(фильм|сериал|кино|видео).*") && c.matches(".*(найди|покажи|ищи|где посмотреть|включи).*") ){String q=extractVideoQuery(original);video.search(q,new VideoSearchEngine.Callback(){public void result(String t){reply(t);}public void state(String s){cb.state(s);}});return;}
-        if(c.matches(".*(управление плеером|доступ к медиасеансам|доступ к медиа).*"){open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),"Открываю доступ к управлению медиаплеером.");return;}
+        if(c.matches(".*(управление плеером|доступ к медиасеансам|доступ к медиа).*") {open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),"Открываю доступ к управлению медиаплеером.");return;}
         if(c.matches(".*(яндекс\\s*музык|я\\s*музык|вк\\s*музык|vk\\s*музык|музыку|музыка).*")){handleMusic(original,c);return;}
         if(c.matches(".*\\b(ютуб|youtube)\\b.*")){launchNamedApp(original,c,"YouTube","com.google.android.youtube","com.google.android.youtube.tv","Открываю YouTube.");return;}
         if(c.matches(".*\\b(телеграм|telegram)\\b.*")){launchNamedApp(original,c,"Telegram","org.telegram.messenger","Открываю Telegram.");return;}
