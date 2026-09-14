@@ -21,3 +21,18 @@ A normal `SpeechRecognizer` is not an OEM-level always-on hotword engine. The ph
 
 ## Build verification
 The working container used for this archive does not have the Gradle CLI installed, so a local `assembleRelease` cannot be honestly claimed here. The included GitHub Actions workflow installs Gradle 8.11.1 and Java 17, runs `:app:assembleRelease`, verifies the APK with `file` and `unzip -t`, and uploads the release artifact.
+
+
+## JARVIS 5.22.0 — major assistant/UI revision
+- Reworked home and settings geometry: fixed-height controls, centered text, two-line-safe labels, consistent premium header/button language.
+- Removed quick-action buttons from the home screen.
+- Enlarged the bottom text composer and send control.
+- Hardened SettingsActivity against the previous null-child crash and kept concrete Android settings destinations with safe fallbacks.
+- Improved conversational state: casual replies such as «нормально», «хорошо», «а ты?» are handled as dialogue instead of being sent to web search.
+- Added persistent local name memory and conversational continuity.
+- Added adaptive music-app selection: explicit Yandex/VK choice, automatic single installed music app selection, or a follow-up question when an app must be chosen. Track search is forwarded to the selected music service where its installed deep-link handler permits it.
+- Preserved the Android Assistant role, foreground wake-word service and «Привет, Джарвис» recognition path.
+- VersionCode 26 / versionName 5.22.0-premium-jarvis. The release keeps the existing applicationId and release keystore so it can be installed as an update over 5.21.
+
+### Important platform behavior
+The wake-word implementation uses Android SpeechRecognizer in a foreground microphone service. Android/OEM restrictions can interrupt unrestricted always-on microphone recognition; selecting JARVIS as the Android Assistant remains the strongest system-wide invocation path available to this architecture.
