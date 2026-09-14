@@ -18,14 +18,18 @@ public final class JarvisEngine {
     public interface Callback { void reply(String text); void state(String state); }
     private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web=new WebSearchEngine();
     private String lastCity="Москва", lastTopic="", lastUserMessage="";
+    private String lastAssistantQuestion="";
+    private String pendingMusicTrack="";
+    private String pendingMusicApp="";
     public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);}
 
     public void handle(final String raw){
         if(raw==null||raw.trim().isEmpty())return;
         final String original=raw.trim(), c=normalize(original); lastUserMessage=original; cb.state("ОБРАБОТКА");
         if(isWakeOnly(c)){reply("Я на связи, сэр. Слушаю вас.");return;}
+        if(handleConversation(c))return;
         if(isGreeting(c)&&!(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь"))){reply(greeting(c));return;}
-        if(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь")){reply("Отлично, сэр. Работаю стабильно, всё под контролем. Спасибо, что спросили. А у вас как дела?");return;}
+        if(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь")){lastAssistantQuestion="how_user";reply("Отлично, сэр. Работаю стабильно и готов помочь. А у вас как дела?");return;}
         if(c.contains("спасибо")||c.contains("благодарю")){reply("Всегда пожалуйста, сэр.");return;}
         if(c.contains("доброй ночи")){reply("Доброй ночи, сэр. Я буду готов, когда вы вернётесь.");return;}
         if(c.contains("который час")||c.equals("время")||c.contains("сколько времени")){reply("Сейчас "+new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date())+".");return;}
@@ -46,7 +50,7 @@ public final class JarvisEngine {
         if(c.contains("открой настройки")||c.equals("настройки")){open(new Intent(Settings.ACTION_SETTINGS),"Открываю системные настройки.");return;}
         if(c.contains("календар")){open(new Intent(Intent.ACTION_VIEW,Uri.parse("content://com.android.calendar/time/")),"Открываю календарь.");return;}
 
-        if(c.matches(".*(яндекс\\s*музык|я\\s*музык|музыку|музыка).*")){launchNamedApp(original,c,"Яндекс Музыку","ru.yandex.music","com.yandex.music","Открываю Яндекс Музыку.");return;}
+        if(c.matches(".*(яндекс\\s*музык|я\\s*музык|вк\\s*музык|vk\\s*музык|музыку|музыка).*")){handleMusic(original,c);return;}
         if(c.matches(".*\\b(ютуб|youtube)\\b.*")){launchNamedApp(original,c,"YouTube","com.google.android.youtube","com.google.android.youtube.tv","Открываю YouTube.");return;}
         if(c.matches(".*\\b(телеграм|telegram)\\b.*")){launchNamedApp(original,c,"Telegram","org.telegram.messenger","Открываю Telegram.");return;}
         if(c.matches(".*\\b(ватсап|whatsapp)\\b.*")){launchNamedApp(original,c,"WhatsApp","com.whatsapp","Открываю WhatsApp.");return;}
@@ -65,6 +69,69 @@ public final class JarvisEngine {
         if(c.matches("^(запиши|запомни|сохрани).*")){save(original.replaceFirst("(?iu)^(запиши|запомни|сохрани)\\s*:??\\s*",""));return;}
         web.search(original,new WebSearchEngine.Callback(){public void result(String t,String s){reply((s==null||s.isEmpty())?t:t+"\n\nИсточник: "+s);}public void state(String s){cb.state(s);}});
     }
+    private boolean handleConversation(String c){
+        if(lastAssistantQuestion.equals("music_app")){
+            String app=""; if(c.contains("яндекс"))app="yandex"; else if(c.matches(".*\b(вк|vk)\b.*"))app="vk";
+            if(!app.isEmpty()){String pkg=findMusicPackage(app); if(pkg!=null){String track=pendingMusicTrack;pendingMusicTrack="";pendingMusicApp="";lastAssistantQuestion="";openMusic(pkg,track);return true;} reply("Такого музыкального приложения я не нашёл. Назовите установленное приложение.");return true;}
+        }
+        if(lastAssistantQuestion.equals("how_user")){
+            if(c.matches(".*\\b(нормально|хорошо|отлично|прекрасно|плохо|ужасно|так себе|в порядке|все нормально|все хорошо)\\b.*")){
+                lastAssistantQuestion="";
+                if(c.contains("плохо")||c.contains("ужасно"))reply("Понимаю, сэр. Надеюсь, скоро станет лучше. Если хотите, расскажите, что случилось.");
+                else reply("Рад это слышать, сэр. Я рядом, если что-нибудь понадобится.");
+                return true;
+            }
+            if(c.matches(".*\\b(а ты|а у тебя|ты как|а сам)\\b.*")){lastAssistantQuestion="";reply("У меня всё штатно, сэр. Я в рабочем режиме и готов продолжать.");return true;}
+        }
+        if(c.matches("^(понятно|ясно|ладно|хорошо|окей|ок|ага|угу)$")){reply("Принято, сэр.");return true;}
+        if(c.matches("^(кто я|ты меня знаешь|ты меня помнишь)$")){String n=prefs.getString("user_name","");reply(n.isEmpty()?"Пока я не знаю, как к вам обращаться. Скажите: запомни, что меня зовут ...":"Конечно, сэр. Я помню, что вас зовут "+n+".");return true;}
+        if(c.matches("^запомни,? что меня зовут .+")){String n=c.replaceFirst("(?iu)^запомни,? что меня зовут\\s+","").trim();if(!n.isEmpty()){prefs.edit().putString("user_name",n).apply();reply("Запомнил. Буду обращаться к вам соответственно.");}return true;}
+        return false;
+    }
+
+    private void handleMusic(String original,String c){
+        String app="";
+        if(c.contains("яндекс")) app="yandex"; else if(c.matches(".*\\b(вк|vk)\\b.*")) app="vk";
+        String track=original.replaceFirst("(?iu).*?(включи|поставь|запусти)\\s+","").trim();
+        track=track.replaceFirst("(?iu)^(яндекс\\s*музык[ау]?|вк\\s*музык[ау]?|vk\\s*музык[ау]?|музыку|музыка)\\s*","").trim();
+        if(track.equalsIgnoreCase("музыку")) track="";
+        String pkg=findMusicPackage(app);
+        if(pkg==null){pendingMusicTrack=track;pendingMusicApp=app;lastAssistantQuestion="music_app";reply("Какое музыкальное приложение использовать? Например: Яндекс Музыка или VK Музыка.");return;}
+        openMusic(pkg,track);
+    }
+
+    private String findMusicPackage(String preferred){
+        try{
+            PackageManager pm=context.getPackageManager(); Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);
+            String best=null;int score=0;int musicCount=0;String only=null;
+            for(android.content.pm.ResolveInfo ri:apps){if(ri.activityInfo==null)continue;String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);boolean music=label.contains("музык")||label.contains("music")||pkg.contains("music");if(!music)continue;musicCount++;only=ri.activityInfo.packageName;int sc=80;
+                if(preferred.equals("yandex")&&((label.contains("яндекс")&&label.contains("музык"))||(pkg.contains("yandex")&&pkg.contains("music"))))sc=180;
+                if(preferred.equals("vk")&&(((label.contains("vk")||label.contains("вк"))&&label.contains("музык"))||(pkg.contains("vk")&&pkg.contains("music"))))sc=180;
+                if(sc>score){score=sc;best=ri.activityInfo.packageName;}
+            }
+            if(!preferred.isEmpty()) return score>=150?best:null;
+            return musicCount==1?only:null;
+        }catch(Throwable ignored){return null;}
+    }
+
+    private void openMusic(String pkg,String track){
+        try{
+            Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);
+            if(launch==null){reply("Музыкальное приложение установлено некорректно.");return;}
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);
+            if(track!=null&&!track.isEmpty()){
+                String url;
+                String p=pkg.toLowerCase(Locale.ROOT);
+                if(p.contains("yandex")) url="https://music.yandex.ru/search/?text="+Uri.encode(track);
+                else if(p.contains("vk")) url="https://vk.com/audio?q="+Uri.encode(track);
+                else url="https://www.google.com/search?q="+Uri.encode(track+" музыка");
+                try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(search);}catch(Throwable ignored){}
+                reply("Открываю музыку: "+track+".");
+            }else reply("Открываю музыкальное приложение.");
+        }catch(Throwable e){reply("Не удалось открыть музыкальное приложение.");}
+    }
+
     private WebSearchEngine.Callback webCallback(){return new WebSearchEngine.Callback(){public void result(String t,String s){reply(t);}public void state(String s){cb.state(s);}};}
     private boolean isWakeOnly(String c){return c.matches("^(джарвис|джарвису|джарвис а|джарвисом|привет джарвис)$");}
     private boolean isGreeting(String c){return c.matches(".*\\b(привет|здравствуй|здравствуйте|доброе утро|добрый день|добрый вечер)\\b.*");}
