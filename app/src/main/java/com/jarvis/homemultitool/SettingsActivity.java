@@ -35,7 +35,7 @@ public class SettingsActivity extends Activity {
         super.onCreate(state); getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
         if(Build.VERSION.SDK_INT>=29){getWindow().setStatusBarContrastEnforced(false);getWindow().setNavigationBarContrastEnforced(false);}
         try{voice=new JarvisVoiceManager(this);voice.init(this::refresh);}catch(Throwable ignored){}
-        try{build();}catch(Throwable fatal){showSafeSettings();}
+        try{build();}catch(Throwable fatal){ showBuildError(fatal); }
     }
 
     private void build(){
@@ -51,6 +51,10 @@ public class SettingsActivity extends Activity {
 
         TextView intro=label("СИСТЕМА  •  ГОЛОС  •  ВЫЗОВ  •  МЕДИА  •  ОБУЧЕНИЕ",9);intro.setTextColor(MUTED);intro.setTypeface(Typeface.DEFAULT,Typeface.BOLD);intro.setLetterSpacing(.05f);root.addView(intro,lp(-1,dp(22),2,10,0,8));
 
+        roleState=state("НЕ ПРОВЕРЕНО");
+        wakeState=state("ВЫКЛЮЧЕН");
+        micState=state("ПРОВЕРКА");
+        mediaState=state("ПРОВЕРКА");
         section(root,"СИСТЕМНЫЙ АССИСТЕНТ");
         addStatusCard(root,"JARVIS как помощник Android","Это главный путь системного вызова: Android может держать VoiceInteractionService живым и запускать JARVIS с жеста/кнопки помощника и с экрана блокировки.",roleState,"ВЫБРАТЬ JARVIS",v->requestRole());
 
@@ -117,6 +121,19 @@ public class SettingsActivity extends Activity {
         }catch(Throwable ignored){}
     }
     private void showMemory(){JarvisMemory m=new JarvisMemory(this);String body="Изученных команд: "+m.learnedCount()+"\n\n"+m.recentContext();if(body.endsWith("\n\n"))body+="Контекст пока пуст.";new AlertDialog.Builder(this).setTitle("ПАМЯТЬ JARVIS").setMessage(body).setPositiveButton("ПОНЯТНО",null).show();}
+    private void showBuildError(Throwable fatal){
+        new Handler(Looper.getMainLooper()).post(()->{
+            try{
+                String msg=fatal==null?"Неизвестная ошибка":String.valueOf(fatal.getMessage());
+                new AlertDialog.Builder(this).setTitle("НАСТРОЙКИ JARVIS")
+                        .setMessage("Не удалось построить внутреннюю панель настроек. Попробуйте ещё раз.\n\n"+msg)
+                        .setPositiveButton("ПОВТОРИТЬ",(d,w)->{try{build();}catch(Throwable t){showBuildError(t);}})
+                        .setNegativeButton("ANDROID",(d,w)->safeOpen(new Intent(Settings.ACTION_SETTINGS),new Intent(Settings.ACTION_SETTINGS)))
+                        .show();
+            }catch(Throwable ignored){safeOpen(new Intent(Settings.ACTION_SETTINGS),new Intent(Settings.ACTION_SETTINGS));}
+        });
+    }
+
     private void showSafeSettings(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(20),dp(20),dp(20),dp(20));root.setBackgroundColor(BG);TextView h=label("J A R V I S",24);h.setTextColor(CYAN);h.setGravity(Gravity.CENTER);root.addView(h,new LinearLayout.LayoutParams(-1,dp(50)));TextView t=label("Экран настроек не удалось построить. Системные параметры остаются доступны ниже.",15);t.setGravity(Gravity.CENTER);t.setTextColor(WHITE);root.addView(t,lp(-1,dp(100),0,20,0,20));root.addView(button("ОТКРЫТЬ НАСТРОЙКИ ANDROID",v->safeOpen(new Intent(Settings.ACTION_SETTINGS),new Intent(Settings.ACTION_SETTINGS))),new LinearLayout.LayoutParams(-1,dp(52)));setContentView(root);}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==REQ_MIC&&g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED&&getSharedPreferences("jarvis",0).getBoolean("wake_pending",false)){getSharedPreferences("jarvis",0).edit().putBoolean("wake_pending",false).putBoolean("wake_enabled",true).apply();try{Intent i=new Intent(this,JarvisWakeWordService.class);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);}catch(Throwable ignored){}}refresh();}
     @Override protected void onResume(){super.onResume();refresh();}

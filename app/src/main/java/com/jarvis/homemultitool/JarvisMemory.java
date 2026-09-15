@@ -95,7 +95,27 @@ public final class JarvisMemory {
         Set<String> i=new HashSet<>(x); i.retainAll(y);
         double overlap=(2.0*i.size())/(x.size()+y.size());
         if(a.contains(b)||b.contains(a)) overlap=Math.max(overlap,0.82);
-        return overlap;
+        double edit=1.0-((double)levenshtein(a,b)/Math.max(1,Math.max(a.length(),b.length())));
+        double prefix=(a.startsWith(b)||b.startsWith(a))?0.88:0.0;
+        return Math.max(overlap,Math.max(edit*0.78,prefix));
+    }
+
+    private int levenshtein(String a,String b){
+        int[] prev=new int[b.length()+1],cur=new int[b.length()+1];
+        for(int j=0;j<=b.length();j++)prev[j]=j;
+        for(int i=1;i<=a.length();i++){cur[0]=i;for(int j=1;j<=b.length();j++){int cost=a.charAt(i-1)==b.charAt(j-1)?0:1;cur[j]=Math.min(Math.min(cur[j-1]+1,prev[j]+1),prev[j-1]+cost);}int[] t=prev;prev=cur;cur=t;}
+        return prev[b.length()];
+    }
+
+    /** Automatically stores a successful paraphrase under a stable intent key.
+     *  The memory is deliberately bounded and local: it adapts to this user without
+     *  pretending to retrain a foundation model.
+     */
+    public synchronized void learnSuccessful(String phrase, String intent){
+        if(phrase==null||intent==null) return;
+        String k=normalize(phrase); String a=intent.trim();
+        if(k.isEmpty()||a.isEmpty()||k.length()>160) return;
+        learnAlias(k,a);
     }
 
     public synchronized void addTurn(String user,String assistant){

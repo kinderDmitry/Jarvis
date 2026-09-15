@@ -10,6 +10,8 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.view.Gravity;
+import android.view.Window;
+import android.view.WindowManager;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -27,8 +29,12 @@ public class JarvisVoiceSession extends android.service.voice.VoiceInteractionSe
     private JarvisVoiceManager voice;
     private TextView status, transcript, answer;
     private boolean listening;
+    private boolean active;
 
-    public JarvisVoiceSession(Context context) { super(context); }
+    public JarvisVoiceSession(Context context) {
+        super(context);
+        try { setTheme(android.R.style.Theme_DeviceDefault_NoActionBar); } catch(Throwable ignored) {}
+    }
 
     @Override public View onCreateContentView() {
         LinearLayout box=new LinearLayout(getContext());
@@ -40,15 +46,22 @@ public class JarvisVoiceSession extends android.service.voice.VoiceInteractionSe
         status=new TextView(getContext()); status.setText("ГОТОВ"); status.setTextColor(Color.WHITE); status.setTextSize(13); status.setGravity(Gravity.CENTER); box.addView(status,new LinearLayout.LayoutParams(-1,50));
         transcript=new TextView(getContext()); transcript.setText(""); transcript.setTextColor(Color.LTGRAY); transcript.setTextSize(16); transcript.setGravity(Gravity.CENTER); box.addView(transcript,new LinearLayout.LayoutParams(-1,80));
         answer=new TextView(getContext()); answer.setText(""); answer.setTextColor(Color.WHITE); answer.setTextSize(17); answer.setGravity(Gravity.CENTER); box.addView(answer,new LinearLayout.LayoutParams(-1,110));
-        TextView settings=new TextView(getContext()); settings.setText("⚙  НАСТРОЙКИ JARVIS"); settings.setTextColor(Color.rgb(82,214,255)); settings.setTextSize(12); settings.setGravity(Gravity.CENTER); settings.setOnClickListener(v->{ try { getContext().startActivity(new Intent(getContext(),SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch(Throwable ignored){} }); box.addView(settings,new LinearLayout.LayoutParams(-1,55));
+        TextView hint=new TextView(getContext()); hint.setText("Голосовой режим • экран приложения не открывается"); hint.setTextColor(Color.rgb(110,140,160)); hint.setTextSize(11); hint.setGravity(Gravity.CENTER); box.addView(hint,new LinearLayout.LayoutParams(-1,45));
         return box;
     }
 
     @Override public void onShow(Bundle args,int flags){
         super.onShow(args,flags);
-        engine=new JarvisEngine(getContext(),new JarvisEngine.Callback(){public void reply(String s){if(answer!=null)answer.setText(s);if(voice!=null)voice.speak(s,null);}public void state(String s){if(status!=null)status.setText(s==null?"ГОТОВ":s);}});
+        engine=new JarvisEngine(getContext(),new JarvisEngine.Callback(){public void reply(String s){if(answer!=null)answer.setText(s);if(voice!=null&&voice.isReady()) voice.speak(s,new android.speech.tts.UtteranceProgressListener(){public void onStart(String id){}public void onDone(String id){if(active) postListen();}public void onError(String id){if(active) postListen();}}); else postListen();}public void state(String s){if(status!=null)status.setText(s==null?"ГОТОВ":s);}});
         voice=new JarvisVoiceManager(getContext()); voice.init(null);
-        startRecognition();
+        active=true; startRecognition();
+    }
+
+    private void postListen(){
+        if(!active)return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
+            if(active&&!listening) startRecognition();
+        },450);
     }
 
     private void startRecognition(){
@@ -70,6 +83,7 @@ public class JarvisVoiceSession extends android.service.voice.VoiceInteractionSe
     }
 
     @Override public void onHide(){
+        active=false;
         try{if(recognizer!=null)recognizer.cancel();}catch(Throwable ignored){}
         try{if(recognizer!=null)recognizer.destroy();}catch(Throwable ignored){}
         recognizer=null; if(engine!=null)engine.shutdown(); if(voice!=null)voice.shutdown(); super.onHide();

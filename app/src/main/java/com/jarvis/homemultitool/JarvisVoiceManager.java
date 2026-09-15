@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
+import android.media.AudioAttributes;
 import java.util.*;
 
 /** Centralized voice policy. Uses only real voices supplied by the installed Android TTS engine. */
@@ -33,13 +34,14 @@ public final class JarvisVoiceManager {
 
     private void configure(){
         try{
+            if(android.os.Build.VERSION.SDK_INT>=21) tts.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
             tts.setLanguage(new Locale("ru","RU"));
             String gender=prefs.getString("gender",AUTO);
             Voice selected=findVoice(gender);
             if(selected!=null) tts.setVoice(selected);
             float rate=prefs.getFloat("rate",0.90f);
             float pitch=prefs.getFloat("pitch",0.90f);
-            if(MALE.equals(gender)){ rate=0.86f; pitch=0.78f; }
+            if(MALE.equals(gender)){ rate=0.82f; pitch=0.72f; }
             else if(FEMALE.equals(gender)){ rate=0.95f; pitch=1.02f; }
             tts.setSpeechRate(rate);
             tts.setPitch(pitch);
@@ -57,7 +59,7 @@ public final class JarvisVoiceManager {
                 if(v.getQuality()>=Voice.QUALITY_HIGH) score+=45; else if(v.getQuality()>=Voice.QUALITY_NORMAL) score+=20;
                 if(!v.isNetworkConnectionRequired()) score+=12; else score+=5;
                 if(MALE.equals(gender)){
-                    if(n.matches(".*(male|man|муж|мужск|мужчина|алекс|иван|павел|серг|андре|михаил|никол|дмитр).*")) score+=120;
+                    if(n.matches(".*(male|man|муж|мужск|мужчина|алекс|иван|павел|серг|андре|михаил|никол|дмитр).*")) score+=160;
                     if(n.matches(".*(female|woman|жен|женск|женщина).*")) score-=120;
                 }else if(FEMALE.equals(gender)){
                     if(n.matches(".*(female|woman|жен|женск|женщина|елена|анна|мария|ольга|ирина|натал).*")) score+=120;

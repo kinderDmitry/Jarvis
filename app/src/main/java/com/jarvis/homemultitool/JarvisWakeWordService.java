@@ -20,7 +20,7 @@ public class JarvisWakeWordService extends Service {
     private static final String CHANNEL="jarvis_wake"; private static final int NOTIFY=71;
     private SpeechRecognizer recognizer; private Intent intent; private Handler handler;
     private JarvisEngine engine; private JarvisVoiceManager voice;
-    private boolean running,listening,processing; private long retry=500;
+    private boolean running,listening,processing; private boolean commandMode=false; private long commandModeUntil=0L; private long retry=500;
 
     @Override public void onCreate(){
         super.onCreate(); handler=new Handler(getMainLooper()); createChannel();
@@ -69,6 +69,8 @@ public class JarvisWakeWordService extends Service {
         if(b==null||processing)return;
         ArrayList<String> rs=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         if(rs==null||rs.isEmpty())return;
+        boolean commandWindow=commandMode && System.currentTimeMillis()<commandModeUntil;
+        if(commandMode && !commandWindow) commandMode=false;
         for(String candidate:rs){
             String x=candidate==null?"":candidate.trim();
             if(x.isEmpty())continue;
@@ -78,7 +80,13 @@ public class JarvisWakeWordService extends Service {
                     ||compact.contains("джарвис")||compact.contains("жарвис")||compact.contains("djarvis")||compact.contains("jarvis");
             if(wake){
                 String command=n.replaceFirst("(?iu).*?(?:привет\\s+)?(?:джарвис|жарвис|дарвис|джа\\s*вис)(?:у|а|ом)?[,:;\\-]?\\s*","").trim();
+                commandMode=false;
                 trigger(command);
+                return;
+            }
+            if(commandWindow){
+                commandMode=false;
+                trigger(n);
                 return;
             }
         }
@@ -86,9 +94,9 @@ public class JarvisWakeWordService extends Service {
     private void trigger(String q){
         processing=true;listening=false;try{if(recognizer!=null){recognizer.cancel();recognizer.destroy();recognizer=null;}}catch(Throwable ignored){}
         if(q.isEmpty()){
+            commandMode=true;
+            commandModeUntil=System.currentTimeMillis()+8000L;
             speak("Слушаю, сэр.");
-            // The TTS completion callback re-arms the listener.
-
         }else{
             updateNotification("ОБРАБАТЫВАЮ КОМАНДУ");
             if(engine!=null)engine.handle(q); else {processing=false;createRecognizer();startListening(150);}
@@ -102,7 +110,7 @@ public class JarvisWakeWordService extends Service {
     private void startListening(long delay){if(!running||processing)return;handler.postDelayed(()->{if(!running||processing||recognizer==null||listening)return;try{recognizer.cancel();recognizer.startListening(intent);}catch(Throwable e){rearm(1000);}},delay);}
     @Override public int onStartCommand(Intent i,int flags,int id){return START_STICKY;}
     @Override public void onTaskRemoved(Intent root){if(running)try{Intent i=new Intent(this,JarvisWakeWordService.class);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);}catch(Throwable ignored){}super.onTaskRemoved(root);}
-    @Override public void onDestroy(){running=false;if(handler!=null)handler.removeCallbacksAndMessages(null);if(recognizer!=null)try{recognizer.destroy();}catch(Throwable ignored){}if(engine!=null)engine.shutdown();if(voice!=null)voice.shutdown();super.onDestroy();}
+    @Override public void onDestroy(){running=false;commandMode=false;if(handler!=null)handler.removeCallbacksAndMessages(null);if(recognizer!=null)try{recognizer.destroy();}catch(Throwable ignored){}if(engine!=null)engine.shutdown();if(voice!=null)voice.shutdown();super.onDestroy();}
     @Override public IBinder onBind(Intent i){return null;}
     private void createChannel(){if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel(CHANNEL,"JARVIS • фоновый вызов",NotificationManager.IMPORTANCE_LOW);c.setDescription("Фоновое ожидание команды «Джарвис»");((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(c);}}
 }
