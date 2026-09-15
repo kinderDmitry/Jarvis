@@ -52,6 +52,32 @@ public final class JarvisMemory {
         return "";
     }
 
+    /** Learns from natural paraphrases without retraining a model: normalizes common Russian command variants and applies the best stored alias. */
+    public synchronized String inferAlias(String phrase){
+        String k=normalize(phrase);
+        if(k.isEmpty()) return "";
+        String normalized=k
+                .replaceAll("\\bпожалуйста\\b","")
+                .replaceAll("\\bможешь\\b","")
+                .replaceAll("\\bможно\\b","")
+                .replaceAll("\\bдавай\\b","")
+                .replaceAll("\\bсделай\\b","")
+                .replaceAll("\\bмне\\b","")
+                .replaceAll("\\s+"," ").trim();
+        if(normalized.equals(k)) return "";
+        try{
+            JSONObject o=new JSONObject(p.getString("aliases","{}"));
+            JSONArray names=o.names(); if(names==null)return "";
+            String bestAction=""; double best=0;
+            for(int i=0;i<names.length();i++){
+                String key=names.optString(i); JSONObject item=o.optJSONObject(key); if(item==null)continue;
+                double score=Math.max(similarity(normalized,key),similarity(k,key));
+                if(score>best){best=score;bestAction=item.optString("action","");}
+            }
+            return best>=0.70?bestAction:"";
+        }catch(Throwable e){return "";}
+    }
+
     private void recordAliasUse(String key,JSONObject root,JSONObject item){
         try{item.put("uses",item.optInt("uses",0)+1);root.put(key,item);p.edit().putString("aliases",root.toString()).apply();}catch(Throwable ignored){}
     }

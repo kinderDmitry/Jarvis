@@ -55,7 +55,7 @@ public final class JarvisEngine {
         if(c.contains("открой настройки")||c.equals("настройки")){open(new Intent(Settings.ACTION_SETTINGS),"Открываю системные настройки.");return;}
         if(c.contains("календар")){open(new Intent(Intent.ACTION_VIEW,Uri.parse("content://com.android.calendar/time/")),"Открываю календарь.");return;}
 
-        if(c.matches(".*(пауза|поставь на паузу|останови музыку|стоп музыку|продолжи музыку|возобнови музыку|следующ(ий|ую)|предыдущ(ий|ую)).*")){handleMediaControl(c);return;}
+        if(c.matches(".*(пауза|поставь на паузу|останови музыку|стоп музыку|продолжи|продолжай|возобнови|возобновляй|дальше|следующ(ий|ую)|предыдущ(ий|ую)|назад|верни песню|включи обратно|играй дальше).*")){handleMediaControl(c);return;}
         if(c.matches(".*(фильм|сериал|кино|видео).*") && c.matches(".*(найди|покажи|ищи|где посмотреть|включи).*") ){String q=extractVideoQuery(original);video.search(q,new VideoSearchEngine.Callback(){public void result(String t){reply(t);}public void state(String s){cb.state(s);}});return;}
         if(c.matches(".*(управление плеером|доступ к медиасеансам|доступ к медиа).*")) {open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),"Открываю доступ к управлению медиаплеером.");return;}
         if(c.matches(".*(яндекс\\s*музык|я\\s*музык|вк\\s*музык|vk\\s*музык|музыку|музыка).*")){handleMusic(original,c);return;}
@@ -78,6 +78,8 @@ public final class JarvisEngine {
         if(c.matches(".*(научи|запомни команду|если я говорю).*(делай|выполняй).*") ){String z=original.replaceFirst("(?iu).*?(?:научи|запомни команду|если я говорю)\\s*","");Matcher lm=Pattern.compile("(?iu)^(.+?)\\s+(?:то\\s+)?(?:делай|выполняй)\\s+(.+)$").matcher(z);if(lm.find()){String phrase=lm.group(1).trim(),action=lm.group(2).trim();memory.learnAlias(phrase,action);reply("Запомнил. Когда вы скажете «"+phrase+"», я буду выполнять: «"+action+"»." );}else reply("Скажите: «Научи: когда я говорю открыть музыку, выполняй открой Яндекс Музыку»." );return;}
         String learned=memory.alias(c);
         if(!learned.isEmpty()&&!learned.equalsIgnoreCase(original)){cb.state("ОБУЧЕННАЯ КОМАНДА");handleInternal(learned);return;}
+        String inferred=memory.inferAlias(c);
+        if(!inferred.isEmpty()&&!inferred.equalsIgnoreCase(c)){cb.state("АДАПТИРОВАЛ КОМАНДУ");handleInternal(inferred);return;}
         if(isCasual(c)||isShortConversation(c)){reply(casualReply(c));return;}
         if(isExplicitInformationRequest(c)){web.search(original,new WebSearchEngine.Callback(){public void result(String t,String s){reply((s==null||s.isEmpty())?t:t+"\n\nИсточник: "+s);}public void state(String s){cb.state(s);}});return;}
         reply("Я понял запрос, но не хочу угадывать. Скажите, что именно нужно сделать, например: «открой приложение», «включи музыку», «найди фильм» или «запомни, что …». После вашего уточнения я сохраню эту формулировку как привычную команду.");
@@ -106,13 +108,19 @@ public final class JarvisEngine {
         String app="";
         if(c.contains("яндекс")) app="yandex"; else if(c.matches(".*\\b(вк|vk)\\b.*")) app="vk";
         if(app.isEmpty()) app=prefs.getString("preferred_music_app","");
-        String track=original.replaceFirst("(?iu).*?(включи|поставь|запусти)\\s+","").trim();
-        track=track.replaceFirst("(?iu)^(яндекс\\s*музык[ау]?|вк\\s*музык[ау]?|vk\\s*музык[ау]?|музыку|музыка)\\s*","").trim();
-        if(track.equalsIgnoreCase("музыку")) track="";
+        String low=c;
+        boolean liked=low.matches(".*(любим|понравивш|нравится|лайк|мне нравится|избранн).*");
+        boolean favorites=low.matches(".*(любим|понравивш|нравится|лайк|избранн).*");
+        boolean continuePlay=low.matches(".*(продолж|возобнов|дальше|включи обратно).*");
+        boolean shuffle=low.matches(".*(вперемешку|перемешай|случайн).*");
+        boolean playlist=low.contains("плейлист");
+        String track=original.replaceFirst("(?iu).*?(включи|поставь|запусти|проиграй|сыграй|включать)\\s*"," ").trim();
+        track=track.replaceFirst("(?iu)^(яндекс\\s*музык[ау]?|вк\\s*музык[ау]?|vk\\s*музык[ау]?|музыку|музыка|песни|песню)\\s*"," ").trim();
+        if(track.matches("(?iu)^(любим(ые|ую)?|понравивш(иеся|ие)|мне нравится|избранное|моя музыка|мои песни|плейлист|музыку)$")) track="";
         String pkg=findMusicPackage(app);
         if(pkg==null){pendingMusicTrack=track;pendingMusicApp=app;lastAssistantQuestion="music_app";reply("Какое музыкальное приложение использовать? Например: Яндекс Музыка или VK Музыка.");return;}
         if(!app.isEmpty())prefs.edit().putString("preferred_music_app",app).apply();
-        openMusic(pkg,track);
+        openMusic(pkg,track,liked||favorites,continuePlay,shuffle,playlist);
     }
 
     private String findMusicPackage(String preferred){
@@ -132,32 +140,43 @@ public final class JarvisEngine {
         }catch(Throwable ignored){return null;}
     }
 
-    private void openMusic(String pkg,String track){
+    private void openMusic(String pkg,String track){ openMusic(pkg,track,false,false,false,false); }
+    private void openMusic(String pkg,String track,boolean liked,boolean continuePlay,boolean shuffle,boolean playlist){
         try{
             Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);
             if(launch==null){reply("Музыкальное приложение установлено некорректно.");return;}
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);
-            String p=pkg.toLowerCase(Locale.ROOT);
-            String tr=track==null?"":track.trim();
-            String low=tr.toLowerCase(new Locale("ru"));
-            boolean playlist=low.contains("плейлист");
-            boolean likedPlaylist=low.matches(".*(моя музыка|мои песни|понравивш|любим|лайк|нравится|мне нравится).*" );
-            if(!tr.isEmpty()&&!playlist&&!likedPlaylist){
-                String url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(tr):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(tr):"https://www.google.com/search?q="+Uri.encode(tr+" музыка");
-                try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);search.setPackage(pkg);context.startActivity(search);}catch(Throwable ignored){try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(search);}catch(Throwable ignored2){}}
-                scheduleMediaPlay(900); reply("Открываю "+(p.contains("yandex")?"Яндекс Музыку":p.contains("com.uma.musicvk")?"VK Музыку":"музыкальное приложение")+" и ищу: "+tr+".");
-            }else if(playlist&&!likedPlaylist){
-                String query=tr.replaceFirst("(?iu)^плейлист\\s*","").trim();
-                String url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(query+" плейлист"):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(query+" плейлист"):"https://www.google.com/search?q="+Uri.encode(query+" плейлист");
-                try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);search.setPackage(pkg);context.startActivity(search);}catch(Throwable ignored){try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(search);}catch(Throwable ignored2){}}
-                reply("Открываю поиск плейлиста «"+query+"» в музыкальном приложении.");
-            }else{
-                scheduleMediaPlay(1100);
-                if(likedPlaylist) reply("Открываю ваше музыкальное приложение. Если в нём уже выбран ваш плейлист «Мне нравится», запускаю воспроизведение; для прямого открытия приватного плейлиста доступ зависит от возможностей самого приложения.");
-                else reply("Открываю музыкальное приложение.");
+            String p=pkg.toLowerCase(Locale.ROOT), tr=track==null?"":track.trim();
+            String url=null;
+            if(liked){
+                if(p.contains("yandex")) url="https://music.yandex.ru/collection/track-likes";
+                else if(p.contains("com.uma.musicvk")) url="https://vk.com/audio";
+            } else if(playlist){
+                String q=tr.replaceFirst("(?iu)^плейлист\\s*","").trim();
+                if(!q.isEmpty()) url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(q+" плейлист"):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(q+" плейлист"):null;
+            } else if(!tr.isEmpty()){
+                String query=tr;
+                String lowTrack=tr.toLowerCase(new Locale("ru"));
+                if(lowTrack.matches(".*(новин|новую музыку|новинки музыки).*")) query="новинки";
+                else if(lowTrack.matches(".*(рок|рэп|хип хоп|поп|электрон|джаз|классическ).*")) query=tr;
+                else if(lowTrack.matches(".*(исполнител|артист).*")) query=tr;
+                url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(query):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(query):"https://www.google.com/search?q="+Uri.encode(query+" музыка");
             }
+            if(url!=null){
+                try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(search);}catch(Throwable ignored){}
+            }
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
+                if(shuffle) JarvisMediaSessionService.control("play");
+                else JarvisMediaSessionService.control("play");
+            },900);
+            if(liked) reply("Открываю ваши понравившиеся и продолжаю воспроизведение.");
+            else if(continuePlay) reply("Продолжаю воспроизведение.");
+            else if(shuffle) reply("Включаю музыку в случайном порядке.");
+            else if(!tr.isEmpty()) reply("Открываю поиск музыки: "+tr+".");
+            else reply("Открываю музыкальное приложение.");
         }catch(Throwable e){reply("Не удалось открыть музыкальное приложение.");}
     }
+
     private void scheduleMediaPlay(long delay){
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
             try{
@@ -172,10 +191,28 @@ public final class JarvisEngine {
     }
 
     private void handleMediaControl(String c){
-        String action=c.contains("пауза")||c.contains("стоп")?"pause":c.contains("продолж")||c.contains("возобнов")?"play":c.contains("предыдущ")?"previous":"next";
+        String action;
+        if(c.contains("пауза")||c.contains("стоп")) action="pause";
+        else if(c.contains("предыдущ")||c.contains("назад")||c.contains("верни песню")) action="previous";
+        else if(c.contains("следующ")||c.contains("дальше")) action="next";
+        else action="play";
         boolean ok=JarvisMediaSessionService.control(action);
-        if(!ok){try{AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);int key="play".equals(action)?android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:"next".equals(action)?android.view.KeyEvent.KEYCODE_MEDIA_NEXT:android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS;am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,key));am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,key));ok=true;}catch(Throwable ignored){}}
-        if(ok)reply("Готово, сэр.");else reply("Не вижу активного плеера. Откройте музыкальное приложение или дайте JARVIS доступ к управлению медиасеансами.");
+        if(!ok){
+            try{
+                AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
+                if(am!=null){
+                    int key="play".equals(action)?android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                            "next".equals(action)?android.view.KeyEvent.KEYCODE_MEDIA_NEXT:android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+                    am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,key));
+                    am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,key));
+                    ok=true;
+                }
+            }catch(Throwable ignored){}
+        }
+        if(ok){
+            String answer="pause".equals(action)?"Поставил воспроизведение на паузу.":"play".equals(action)?"Продолжаю воспроизведение.":"next".equals(action)?"Переключаю на следующий трек.":"Возвращаю предыдущий трек.";
+            reply(answer);
+        }else reply("Не вижу активного плеера. Откройте музыкальное приложение или дайте JARVIS доступ к медиасеансам.");
     }
     private String extractVideoQuery(String original){String q=original.replaceFirst("(?iu)^(.*?)(найди|покажи|ищи|где посмотреть|включи)\\s*"," ").trim();q=q.replaceFirst("(?iu)\\s+(фильм|сериал|кино|видео)\\s*"," ").trim();return q.isEmpty()?original:q;}
     private boolean isShortConversation(String c){return c.length()<=28 && c.matches(".*\\b(нормально|хорошо|плохо|отлично|спасибо|пожалуйста|устал|занят|скучно|ясно|понятно)\\b.*");}

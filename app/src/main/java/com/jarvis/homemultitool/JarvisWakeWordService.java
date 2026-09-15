@@ -66,10 +66,23 @@ public class JarvisWakeWordService extends Service {
     };
 
     private void check(Bundle b){
-        if(b==null||processing)return;ArrayList<String> rs=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(rs==null)return;
-        for(String s:rs){if(s==null)continue;String x=s.toLowerCase(new Locale("ru")).replace('ё','е').trim();String compact=x.replaceAll("[^а-яa-z0-9]","");boolean wake=x.matches(".*\\b(привет\\s+)?джарвис(у|а|ом)?\\b.*")||compact.contains("джарвис")||compact.contains("djarvis")||compact.contains("jarvis");if(wake){String q=x.replaceAll("(?iu)\\bджарвис(у|а|ом)?\\b"," ").replaceAll("(?iu)\\bjarvis\\b"," ").replaceAll("\\s+"," ").trim();trigger(q);return;}}
+        if(b==null||processing)return;
+        ArrayList<String> rs=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if(rs==null||rs.isEmpty())return;
+        for(String candidate:rs){
+            String x=candidate==null?"":candidate.trim();
+            if(x.isEmpty())continue;
+            String n=x.toLowerCase(new Locale("ru")).replace('ё','е').replaceAll("\\s+"," ").trim();
+            String compact=n.replaceAll("[^а-яa-z0-9]","");
+            boolean wake=n.matches(".*\\b(привет\\s+)?(джарвис|жарвис|дарвис|джа\\s*вис)(у|а|ом)?\\b.*")
+                    ||compact.contains("джарвис")||compact.contains("жарвис")||compact.contains("djarvis")||compact.contains("jarvis");
+            if(wake){
+                String command=n.replaceFirst("(?iu).*?(?:привет\\s+)?(?:джарвис|жарвис|дарвис|джа\\s*вис)(?:у|а|ом)?[,:;\\-]?\\s*","").trim();
+                trigger(command);
+                return;
+            }
+        }
     }
-
     private void trigger(String q){
         processing=true;listening=false;try{if(recognizer!=null){recognizer.cancel();recognizer.destroy();recognizer=null;}}catch(Throwable ignored){}
         if(q.isEmpty()){
