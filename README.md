@@ -1,53 +1,34 @@
-# JARVIS 5.31.5 — Assistant / Wake / Adaptive Memory
+# JARVIS 5.31.7 — Adaptive Assistant
 
-## Что изменено
-- Сохранён тот же `applicationId` и release keystore: обновление устанавливается поверх 5.30 без удаления приложения, если предыдущая APK была подписана тем же ключом.
-- `VoiceInteractionService` используется как системная точка входа. Пользователь может назначить JARVIS системным помощником Android.
-- Поддержаны фразы активации **«Джарвис»** и **«Привет, Джарвис»** в локальном wake-listener.
-- При наличии Android on-device SpeechRecognizer он используется первым; иначе применяется системный SpeechRecognizer.
-- После выбора JARVIS системным помощником VoiceInteractionService может запускать явно включённый wake-listener; это соответствует архитектуре Android, но не подменяет закрытый низкопотребляющий hotword DSP Google.
-- Команды выполняются через защищённый `JarvisEngine`: неизвестная команда больше не должна приводить к падению Activity/сервиса — есть общий safe fallback.
-- Локальная память расширена: псевдонимы команд, нечёткое сопоставление похожих фраз, счётчик использования и расширенный контекст диалога.
-- Управление медиаплеером использует `MediaSession`/`MediaController`, затем fallback на media key.
-- Музыкальные команды умеют выбирать установленное музыкальное приложение, запоминать предпочтение и просить пользователя выбрать сервис, если он не определён.
-- Поиск фильма/сериала возвращает несколько найденных веб-источников, а не выдумывает наличие контента.
-- Настройки полностью переписаны с defensive UI: ни один элемент не добавляется как `null`, системные статусы читаются из Android, а fallback-экран остаётся доступным даже при исключении.
-- Главный экран сохраняет адаптивный composer: при открытии IME строка ввода поднимается над клавиатурой, при закрытии возвращается вниз.
+Исправленная сборка с реальным системным VoiceInteractionService, отдельной voice-session для экрана блокировки, рабочим экраном настроек и локальной адаптивной памятью.
 
-## Важное ограничение вызова
-Публичный Android API не предоставляет стороннему приложению возможность просто зарегистрировать произвольную фразу «Джарвис» в том же низкопотребляющем hotword-движке, который использует Google Assistant. Официальный путь для системного помощника — `VoiceInteractionService`; собственная фраза реализована отдельным локальным wake-listener. Для максимально надёжного режима назначьте JARVIS помощником Android, выдайте микрофон и отключите для JARVIS агрессивную оптимизацию батареи.
+## Что исправлено
+- Убран источник падения SettingsActivity: статусные TextView теперь создаются до добавления карточек. Экран больше не должен сваливаться в сообщение «Экран настроек не удалось построить».
+- Убран `ACTION_ASSIST` у MainActivity, чтобы системный вызов ассистента не открывал полный экран приложения поверх экрана блокировки.
+- VoiceInteractionSession использует собственную сессию JARVIS вместо MainActivity и может показываться поверх lock screen.
+- После фразы «Джарвис» / «Привет, Джарвис» включается 8-секундное окно следующей команды без повторного обращения «Джарвис».
+- Добавлено распознавание «продолжай», «продолжить», «дальше», «верни песню», «играй дальше» и других вариантов управления плеером.
+- Добавлены команды «что сейчас играет», «поставь лайк», «поставь дизлайк» через Android MediaSession, если конкретный плеер поддерживает соответствующее действие.
+- Локальная память теперь автоматически сохраняет успешные командные формулировки и использует их как примеры для будущих перефразировок. Добавлено расстояние Левенштейна к сравнению фраз.
+- Сохранена работа с «моей музыкой»/понравившимися треками, персональными плейлистами и выбором музыкального приложения там, где это поддерживается самим приложением.
+
+## Важно про интеллект
+JARVIS не «переобучает» закрытую большую языковую модель на телефоне. В этой сборке обучение — локальная персональная адаптация: история успешных команд, предпочтения, контекст и устойчивое сопоставление новых формулировок с уже выполненными действиями. Это позволяет ассистенту становиться точнее именно для конкретного пользователя без внешнего сервера.
+
+## Голосовой вызов
+Основной системный механизм — Android `VoiceInteractionService`. Android поддерживает выбранный пользователем системный voice interactor как постоянно доступный сервис для hotword/assist-сценариев; это правильная архитектура для системного помощника. Обычный `SpeechRecognizer` не является заменой закрытого DSP/hotword-движка Google и поэтому фоновое слово активации зависит от ограничений Android, разрешения микрофона, батареи и производителя телефона.
 
 ## Сборка
-```bash
-gradle --no-daemon --stacktrace :app:assembleRelease
-```
+GitHub Actions использует Gradle 8.11.1 и Java 17: `gradle --no-daemon --stacktrace clean :app:assembleRelease`.
 
 
-## 5.31.x assistant architecture
+## 5.31.8 — Smart Assistant
+- исправлена совместимость локальной памяти с Android JSONObject;
+- исправлен экран настроек и убран тупиковый экран-заглушка при ошибке построения;
+- добавлен локальный слой понимания перефразировок команд;
+- добавлено автоматическое запоминание успешных пользовательских формулировок как локальных алиасов;
+- улучшен режим последовательного голосового диалога в VoiceInteractionSession;
+- усилен кинематографичный мужской профиль TTS без подмены голоса конкретного актёра;
+- сохранён системный путь VoiceInteractionService для вызова помощника с экрана блокировки.
 
-- `JarvisVoiceInteractionService` is the Android system-assistant entry point.
-- `JarvisVoiceSession` is the lock-screen assistant surface; it no longer launches the full `MainActivity`, so the assistant invocation does not replace the keyguard with the application UI.
-- `JarvisWakeWordService` provides a best-effort background wake listener for `Джарвис` and `Привет, Джарвис`. It uses Android speech recognition in short sessions because a normal third-party `SpeechRecognizer` is not equivalent to Google's privileged hardware hotword engine.
-- `JarvisMemory` stores local aliases and dialogue context. Learned phrases are matched with exact and similarity-based lookup. This is adaptive command learning, not retraining a foundation model.
-- Media control uses Android `MediaSession`/`MediaController` after notification-listener access is granted.
-- Release CI performs a clean release build and verifies the generated APK.
-
-### Important Android setup
-
-For system-wide invocation, select **JARVIS as the Android Assistant**. For `Джарвис` / `Привет, Джарвис` background activation, grant microphone access and enable the background wake listener. Battery optimization may need to be disabled on devices that aggressively stop microphone foreground services.
-
-## 5.31.4 build fix
-- Fixed JSONObject iteration to use `names()`/`jsonKeys()` compatible with Android JSON API.
-- Fixed explicit `AlertDialog` reference in SettingsActivity.
-- Release version bumped to 5.31.4.
-
-JARVIS 5.31.5 build repair: fixed JSONObject iteration and SettingsActivity AlertDialog import.
-
-## JARVIS 5.31.6 — Adaptive Assistant
-- Wake phrases: «Джарвис», «Привет, Джарвис» plus common recognition variants.
-- Wake listener strips the wake phrase and executes the command that follows it.
-- Natural-language media controls: pause/stop, continue/resume, next/dальше, previous/back.
-- Music intent categories: liked/favorites, playlists, tracks, artists/genres, new music, shuffle/continue.
-- Local adaptive memory: learned aliases plus paraphrase normalization; dialogue context is retained locally.
-- No fabricated claim of model retraining: local memory adapts command mappings; a true neural model still requires an inference model/backend.
-- Keyguard assistant surface remains a VoiceInteractionSession rather than launching the full main Activity.
+Важно: Android не предоставляет стороннему приложению закрытую hotword-технологию Google Assistant, поэтому фоновая фраза «Джарвис» реализуется через разрешённый foreground microphone service, а надёжный вызов с экрана блокировки — через системную роль помощника.
