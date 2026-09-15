@@ -1,4 +1,4 @@
-# JARVIS 5.31 — Assistant / Wake / Adaptive Memory
+# JARVIS 5.31.5 — Assistant / Wake / Adaptive Memory
 
 ## Что изменено
 - Сохранён тот же `applicationId` и release keystore: обновление устанавливается поверх 5.30 без удаления приложения, если предыдущая APK была подписана тем же ключом.
@@ -40,3 +40,14 @@ For system-wide invocation, select **JARVIS as the Android Assistant**. For `Д�
 - Fixed JSONObject iteration to use `names()`/`jsonKeys()` compatible with Android JSON API.
 - Fixed explicit `AlertDialog` reference in SettingsActivity.
 - Release version bumped to 5.31.4.
+
+JARVIS 5.31.5 build repair: fixed JSONObject iteration and SettingsActivity AlertDialog import.
+
+## JARVIS 5.31.6 — Adaptive Assistant
+- Wake phrases: «Джарвис», «Привет, Джарвис» plus common recognition variants.
+- Wake listener strips the wake phrase and executes the command that follows it.
+- Natural-language media controls: pause/stop, continue/resume, next/dальше, previous/back.
+- Music intent categories: liked/favorites, playlists, tracks, artists/genres, new music, shuffle/continue.
+- Local adaptive memory: learned aliases plus paraphrase normalization; dialogue context is retained locally.
+- No fabricated claim of model retraining: local memory adapts command mappings; a true neural model still requires an inference model/backend.
+- Keyguard assistant surface remains a VoiceInteractionSession rather than launching the full main Activity.
