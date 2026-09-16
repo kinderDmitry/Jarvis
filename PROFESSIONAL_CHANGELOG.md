@@ -48,3 +48,20 @@ A local Android SDK/Gradle installation was not available in the execution envir
 - Fixed `JarvisVoiceSession.java`: `VoiceInteractionSession.getWindow()` returns a `Dialog`, not a `Window`.
 - The session surface now obtains the actual `Window` via `Dialog.getWindow()` before applying transparent background and dim-behind settings.
 - No functional change to voice recognition or media routing.
+
+## 5.42.0 — Command & Device Expansion
+- Expanded device command routing.
+- Added timer remaining-time query.
+- Added persistent local stopwatch state.
+- Added percentage-based media volume control.
+- Added contacts/device-info/battery settings actions.
+- Extended Russian duration parsing with common number words.
+- Added `JARVIS_5_42_0_CHECKLIST.md` with implementation and verification status.
+
+
+## 5.43.0 — Persistent Interval Timer
+- Добавлен постоянный интервальный таймер.
+- Повторное планирование через AlarmManager после каждого срабатывания.
+- Сохранение интервала и метки в SharedPreferences.
+- Восстановление после перезагрузки через BOOT_COMPLETED.
+- Голосовая остановка.
