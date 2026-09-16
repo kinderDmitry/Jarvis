@@ -524,10 +524,10 @@ public final class JarvisEngine {
             boolean ok=JarvisMediaSessionService.setShuffle(false,""); reply(ok?"Выключил перемешивание.":"Активный плеер не поддерживает управление перемешиванием."); return;
         }
         if(c.matches(".*\\b(повтори песню|повтор текущей|повтор трека)\\b.*")){
-            boolean ok=JarvisMediaSessionService.setRepeat(android.media.session.PlaybackState.REPEAT_MODE_ONE,""); reply(ok?"Включил повтор текущего трека.":"Активный плеер не поддерживает повтор."); return;
+            boolean ok=JarvisMediaSessionService.setRepeat(1,""); reply(ok?"Включил повтор текущего трека.":"Активный плеер не поддерживает повтор."); return;
         }
         if(c.matches(".*\\b(повторяй плейлист|повтор плейлиста|повтор всего)\\b.*")){
-            boolean ok=JarvisMediaSessionService.setRepeat(android.media.session.PlaybackState.REPEAT_MODE_ALL,""); reply(ok?"Включил повтор плейлиста.":"Активный плеер не поддерживает повтор."); return;
+            boolean ok=JarvisMediaSessionService.setRepeat(2,""); reply(ok?"Включил повтор плейлиста.":"Активный плеер не поддерживает повтор."); return;
         }
         Matcher seek=Pattern.compile("(?iu)(?:перемотай|перемотать|промотай)\\s+(?:на\\s+)?(\\d+)\\s*(секунд|сек|минут|мин)").matcher(c);
         if(seek.find()){ long n=Long.parseLong(seek.group(1)); if(seek.group(2).startsWith("мин"))n*=60; boolean ok=JarvisMediaSessionService.seekRelative(n*1000L,""); reply(ok?"Перемотал вперёд на "+(seek.group(1))+" "+seek.group(2)+".":"Плеер не поддерживает перемотку."); return; }

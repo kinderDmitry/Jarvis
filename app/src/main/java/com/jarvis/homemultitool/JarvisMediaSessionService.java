@@ -136,13 +136,23 @@ public final class JarvisMediaSessionService extends NotificationListenerService
     public static boolean setShuffle(boolean enabled, String preferredPackage){
         MediaController c=bestController(preferredPackage);
         if(c==null || android.os.Build.VERSION.SDK_INT<26)return false;
-        try{ c.getTransportControls().setShuffleMode(enabled?PlaybackState.SHUFFLE_MODE_ALL:PlaybackState.SHUFFLE_MODE_NONE); return true; }catch(Throwable ignored){return false;}
+        try{
+            if(android.os.Build.VERSION.SDK_INT<29)return false;
+            java.lang.reflect.Method m=c.getTransportControls().getClass().getMethod("setShuffleMode", int.class);
+            m.invoke(c.getTransportControls(), enabled?1:0);
+            return true;
+        }catch(Throwable ignored){return false;}
     }
 
     public static boolean setRepeat(int mode, String preferredPackage){
         MediaController c=bestController(preferredPackage);
         if(c==null || android.os.Build.VERSION.SDK_INT<26)return false;
-        try{ c.getTransportControls().setRepeatMode(mode); return true; }catch(Throwable ignored){return false;}
+        try{
+            if(android.os.Build.VERSION.SDK_INT<29)return false;
+            java.lang.reflect.Method m=c.getTransportControls().getClass().getMethod("setRepeatMode", int.class);
+            m.invoke(c.getTransportControls(), mode);
+            return true;
+        }catch(Throwable ignored){return false;}
     }
 
     public static boolean seekRelative(long deltaMs, String preferredPackage){
