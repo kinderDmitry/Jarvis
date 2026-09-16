@@ -65,6 +65,25 @@ public final class JarvisMediaSessionService extends NotificationListenerService
 
     public static boolean control(String command){return control(command,"");}
 
+    /**
+     * Ask the active media session to resolve and start a search request.
+     * Android exposes this specifically for voice-assistant style commands.
+     * An empty query means "play any music" according to the public API.
+     */
+    public static boolean playFromSearch(String query, String preferredPackage){
+        MediaController c=bestController(preferredPackage);
+        if(c==null)return false;
+        try{
+            MediaController.TransportControls t=c.getTransportControls();
+            if(t==null)return false;
+            String q=query==null?"":query.trim();
+            t.playFromSearch(q,new android.os.Bundle());
+            return true;
+        }catch(Throwable ignored){return false;}
+    }
+
+    public static boolean playFromSearch(String query){return playFromSearch(query,"");}
+
     /** Controls the best active media session, regardless of the provider. */
     public static boolean control(String command,String preferredPackage){
         MediaController c=bestController(preferredPackage);

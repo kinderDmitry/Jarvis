@@ -166,13 +166,11 @@ public final class JarvisEngine {
         else if(c.contains("spotify")) app="spotify";
         else if(c.contains("youtube music")||c.contains("ютуб музыку")||c.contains("ютуб музыка")) app="youtube";
 
-        boolean liked=c.matches(".*(моя любим|мои любим|любим(ая|ое|ые)|понравивш|избранн|лайкнут|моя музыка|мои песни).*");
-        boolean continuePlay=c.matches(".*(продолж|возобнов|дальше|включи обратно|сними с пауз).*");
-        boolean shuffle=c.matches(".*(вперемешку|перемешай|случайн|рандом).*");
+        boolean liked=c.matches(".*(любимое|моя любим|мои любим|любим(ая|ое|ые)|понравивш|избранн|лайкнут|моя музыка|мои песни).*" );
+        boolean continuePlay=c.matches(".*(продолж|возобнов|включи обратно|сними с пауз).*" );
+        boolean shuffle=c.matches(".*(вперемешку|перемешай|случайн|рандом).*" );
         boolean playlist=c.contains("плейлист");
 
-        // "В дороге / для танцев / для спорта / для работы" are semantic modes,
-        // not fixed playlists. The mode is remembered and can be replaced later.
         String mode=extractMusicMode(c);
         if(!mode.isEmpty()) prefs.edit().putString("music_mode",mode).apply();
         else mode=prefs.getString("music_mode","");
@@ -180,48 +178,20 @@ public final class JarvisEngine {
         String track=extractMusicTarget(original);
         if(isMusicModeOnly(track))track="";
 
-        // "переключи с танцев на дорогу" should replace the mode and search again,
-        // rather than merely skipping the current song.
-        if(!mode.isEmpty() && (track.isEmpty() || track.matches("(?iu).*(с|из)\\s+(?:режима\\s+)?(танцев|дороги|спорта|работы|релаксации|сна).*")) && !liked && !continuePlay && !playlist){
-            track=mode;
-        }
+        if(!mode.isEmpty() && track.isEmpty() && !liked && !continuePlay && !playlist) track=mode;
 
         if(continuePlay && track.isEmpty() && !liked){
             boolean ok=JarvisMediaSessionService.control("play");
-            if(!ok) scheduleMediaPlay(150);
+            if(!ok) scheduleMediaPlay(250);
             reply(ok?"Продолжаю воспроизведение.":"Пытаюсь продолжить воспроизведение в активном плеере.");
             return;
         }
 
-        if(liked && track.isEmpty()){
-            String preferred=prefs.getString("preferred_music_app","");
-            String pkg=findMusicPackage(preferred);
-            if(pkg==null){
-                String active=JarvisMediaSessionService.activePackage();
-                if(!active.isEmpty())pkg=active;
-            }
-            if(pkg==null){
-                pendingMusicTrack="";
-                pendingMusicApp=preferred;
-                lastAssistantQuestion="music_app";
-                reply("Какое музыкальное приложение использовать для ваших понравившихся?");
-                return;
-            }
-            prefs.edit().putString("preferred_music_app",providerKey(pkg)).apply();
-            openMusic(pkg,"",true,false,false,false);
-            return;
-        }
-
         if(app.isEmpty()) app=prefs.getString("preferred_music_app","");
+        String activePackage=JarvisMediaSessionService.activePackage();
         String pkg=findMusicPackage(app);
-
-        // If no provider is selected, prefer the currently active media app.
-        if(pkg==null && app.isEmpty()){
-            String active=JarvisMediaSessionService.activePackage();
-            if(!active.isEmpty())pkg=active;
-        }
-
-        // If the user named an installed app we do not know, resolve it by label.
+        if(pkg==null && !activePackage.isEmpty()) pkg=activePackage;
+        if(pkg==null && app.isEmpty()) pkg=findMusicPackage("yandex");
         if(pkg==null && !app.isEmpty()) pkg=findInstalledAppByText(app);
 
         if(pkg==null){
@@ -233,7 +203,64 @@ public final class JarvisEngine {
         }
 
         prefs.edit().putString("preferred_music_app",providerKey(pkg)).apply();
-        openMusic(pkg,track,false,false,shuffle,playlist);
+
+        // IMPORTANT: never open a search page before trying the media session.
+        // This was the source of the old behaviour where "включи музыку" or
+        // "включи понравившиеся" opened a search screen instead of playback.
+        String query=track==null?"":track.trim();
+        if(shuffle && !mode.isEmpty()) query=mode;
+        if(liked) query="";
+
+        // Standard Android voice/media route. For "music" an empty query asks
+        // the player for any music. Providers that support richer voice search
+        // can resolve artist/track/mode queries directly.
+        if(JarvisMediaSessionService.playFromSearch(query,pkg)){
+            reply(liked?"Включаю понравившуюся музыку в "+providerName(pkg)+".":
+                    query.isEmpty()?"Включаю музыку в "+providerName(pkg)+".":
+                    "Включаю «"+query+"» в "+providerName(pkg)+".");
+            return;
+        }
+
+        // The app may not have published its MediaSession yet. Launch only the
+        // player itself, then retry several times. Do NOT open its search page.
+        launchMusicApp(pkg);
+        final String finalPkg=pkg, finalQuery=query;
+        retryMediaPlay(finalPkg,finalQuery,liked,0);
+    }
+
+    private void launchMusicApp(String pkg){
+        try{
+            Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);
+            if(launch!=null){launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);}
+        }catch(Throwable ignored){}
+    }
+
+    private void retryMediaPlay(final String pkg,final String query,final boolean liked,final int attempt){
+        final long[] delays={450L,1100L,2400L,5000L};
+        if(attempt>=delays.length){
+            // Only a true failure reaches the provider fallback. For a named
+            // track this may open a provider search; for generic/liked playback
+            // we deliberately avoid a misleading search screen.
+            if(!liked && query!=null && !query.trim().isEmpty()){
+                try{
+                    String url=providerSearchUrl(pkg,query);
+                    Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse(url)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(i);
+                    reply("Не удалось передать команду плееру напрямую. Открываю поиск «"+query+"» как резервный вариант.");
+                    return;
+                }catch(Throwable ignored){}
+            }
+            reply(liked?"Музыкальное приложение открылось, но оно не предоставило JARVIS доступ к воспроизведению понравившихся. Включите доступ к медиасеансам и повторите команду.":"Музыкальное приложение не предоставило JARVIS доступ к управлению воспроизведением.");
+            return;
+        }
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
+            boolean ok=false;
+            try{ok=JarvisMediaSessionService.playFromSearch(query,pkg);}
+            catch(Throwable ignored){}
+            if(ok){
+                reply(liked?"Включаю понравившуюся музыку в "+providerName(pkg)+".":query.isEmpty()?"Включаю музыку в "+providerName(pkg)+".":"Включаю «"+query+"» в "+providerName(pkg)+".");
+            }else retryMediaPlay(pkg,query,liked,attempt+1);
+        },delays[attempt]);
     }
 
     private String extractMusicTarget(String original){
@@ -355,23 +382,54 @@ public final class JarvisEngine {
             }
 
             if(url!=null){
-                try{
-                    Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));
-                    search.setPackage(pkg);
-                    search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    context.startActivity(search);
-                }catch(Throwable ignored){
-                    try{context.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Throwable ignored2){}
+                boolean opened=false;
+                // Yandex desktop/mobile clients have historically exposed a
+                // yandexmusic URI scheme. Treat it only as an optional fallback;
+                // the public Android MediaSession path above remains primary.
+                if(liked && p.contains("yandex")){
+                    try{
+                        Intent deep=new Intent(Intent.ACTION_VIEW,Uri.parse("yandexmusic:/collection/track-likes"));
+                        deep.setPackage(pkg); deep.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(deep); opened=true;
+                    }catch(Throwable ignored){}
+                }
+                if(!opened){
+                    try{
+                        Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));
+                        search.setPackage(pkg);
+                        search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(search); opened=true;
+                    }catch(Throwable ignored){
+                        try{context.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Throwable ignored2){}
+                    }
                 }
             }
 
-            // Give the app time to publish its MediaSession, then issue play.
-            scheduleMediaPlay(1100);
-            if(liked)reply("Открываю понравившуюся музыку в "+providerName(p)+".");
+            // Give the app time to publish its MediaSession, then use the
+            // voice-search transport command before falling back to a web/app
+            // search page. This is the important difference between "open the
+            // music app" and actually asking the player to play something.
+            final String postQuery=liked?"мне нравится":(shuffle&&!prefs.getString("music_mode","").isEmpty()?prefs.getString("music_mode",""):tr);
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
+                boolean started=false;
+                try{
+                    if(JarvisMediaSessionService.playFromSearch(postQuery,pkg)) started=true;
+                    if(!started && (postQuery==null||postQuery.trim().isEmpty())) started=JarvisMediaSessionService.control("play",pkg);
+                }catch(Throwable ignored){}
+                if(!started && !liked && !tr.isEmpty()){
+                    try{
+                        String fallback=providerSearchUrl(p,tr);
+                        Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(fallback));
+                        search.setPackage(pkg); search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(search);
+                    }catch(Throwable ignored){}
+                }
+            },1200);
+            if(liked)reply("Пытаюсь включить понравившуюся музыку в "+providerName(p)+".");
             else if(continuePlay)reply("Продолжаю воспроизведение.");
             else if(shuffle)reply("Включаю музыку в режиме "+(prefs.getString("music_mode","случайный выбор"))+".");
-            else if(!tr.isEmpty())reply("Ищу «"+tr+"» и запускаю воспроизведение.");
-            else reply("Открываю музыкальный плеер.");
+            else if(!tr.isEmpty())reply("Пытаюсь включить «"+tr+"» в "+providerName(p)+".");
+            else reply("Включаю музыку в "+providerName(p)+".");
         }catch(Throwable e){reply("Не удалось открыть музыкальное приложение.");}
     }
 
