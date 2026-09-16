@@ -494,7 +494,7 @@ public final class JarvisEngine {
     private void save(String s){if(s.trim().isEmpty()){reply("Что именно сохранить?");return;}String old=prefs.getString("notes","");prefs.edit().putString("notes",old.isEmpty()?"• "+s:old+"\n• "+s).apply();reply("Сохранил в локальную память.");}
     private String extractIntervalLabel(String raw){
         String x=JarvisSmartRouter.normalize(raw==null?"":raw);
-        x=x.replaceFirst("(?iu).*?(каждые|через каждые|повторяй(?:\s+команду)?|интервальный таймер|интервал)\\s*","").trim();
+        x=x.replaceFirst("(?iu).*?(каждые|через каждые|повторяй(?:\\s+команду)?|интервальный таймер|интервал)\\s*","").trim();
         x=x.replaceFirst("(?iu)\\b\\d+\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч)\\b","").trim();
         x=x.replaceAll("(?iu)\\b(ноль|одну|один|одна|две|два|три|четыре|пять|шесть|семь|восемь|девять|десять|одиннадцать|двенадцать|тринадцать|четырнадцать|пятнадцать|двадцать|тридцать)\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч)\\b","").trim();
         x=x.replaceFirst("(?iu)^(?:мне|мне пожалуйста|пожалуйста)\\s*","").trim();
