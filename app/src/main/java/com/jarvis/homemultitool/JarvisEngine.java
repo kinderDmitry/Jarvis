@@ -33,6 +33,8 @@ public final class JarvisEngine {
     private void handleInternal(final String raw){
         if(raw==null||raw.trim().isEmpty())return;
         final String original=raw.trim(); String c=JarvisSmartRouter.normalize(original); previousUserMessage=lastUserMessage; lastUserMessage=original; lastIntentCommand=c; learnPreference(original,c); cb.state("ОБРАБОТКА");
+        if (handleExtendedDeviceCommand(original, c)) return;
+        if (handleExtendedUtilityCommand(original, c)) return;
         JarvisLocalAI.Decision ai=localAI.analyze(original,c,lastTopic,prefs.getString("preferred_music_app",""),memory);
         JarvisAdaptiveBrain.Match learnedBrain=adaptive.predict(original);
         if(learnedBrain.confidence>=0.84 && !learnedBrain.intent.isEmpty() && !"UNKNOWN".equals(learnedBrain.intent)) {
@@ -57,6 +59,17 @@ public final class JarvisEngine {
         if(c.contains("заряд")||c.contains("батаре")){battery();return;}
         if(c.contains("погода")||c.contains("температур")||c.contains("осадк")||c.contains("дождь")||c.contains("снег")){handleWeather(original,c);return;}
         if((c.equals("а завтра")||c.equals("завтра")||c.equals("а послезавтра")||c.equals("послезавтра"))&&lastTopic.equals("weather")){int d=c.contains("послезавтра")?2:1;web.forecastWeather(lastCity,d,webCallback());return;}
+        if(c.matches(".*\\b(интервальн|интервал|повторяй|каждые|через каждые)\\b.*")){
+            if(c.contains("сколько осталось")||c.contains("следующ")||c.contains("когда сработ")){
+                android.content.SharedPreferences isp=context.getSharedPreferences("jarvis_interval_timer",Context.MODE_PRIVATE);
+                if(!isp.getBoolean("enabled",false)){reply("Активного интервального таймера нет.");return;}
+                long next=isp.getLong("next",0L); long left=Math.max(0,(next-System.currentTimeMillis())/1000L);
+                reply(left<=0?"Интервальный таймер сработает сейчас.":"Следующее срабатывание через "+TimerTool.format((int)Math.min(Integer.MAX_VALUE,left))+"."); return;
+            }
+            if(c.contains("отмен")||c.contains("останов")||c.contains("выключ")){IntervalTimerTool.cancel(context,cb);}
+            else {int sec=parseDuration(c); if(sec<=0)sec=300; String label=extractIntervalLabel(original); IntervalTimerTool.start(context,sec,label,cb);}
+            return;
+        }
         if(c.contains("таймер")){if(c.contains("отмен")||c.contains("сброс")){JarvisEngine.TimerTool.cancel(context,cb);}else{int sec=parseDuration(c);if(sec<=0)sec=300;JarvisEngine.TimerTool.start(context,sec,cb);}return;}
         if(c.contains("будильник")){AlarmTool.schedule(context,original,cb);return;}
         if(isMath(c)){calculator(c);return;}
@@ -479,7 +492,96 @@ public final class JarvisEngine {
         memory.addTurn(lastUserMessage,s);cb.reply(s);
     }
     private void save(String s){if(s.trim().isEmpty()){reply("Что именно сохранить?");return;}String old=prefs.getString("notes","");prefs.edit().putString("notes",old.isEmpty()?"• "+s:old+"\n• "+s).apply();reply("Сохранил в локальную память.");}
-    private int parseDuration(String s){Matcher m=Pattern.compile("(\\d+)\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч)").matcher(s);if(!m.find())return 0;int n=Integer.parseInt(m.group(1));String u=m.group(2);if(u.startsWith("сек"))return n;if(u.startsWith("час")||u.equals("ч"))return n*3600;return n*60;}
+    private String extractIntervalLabel(String raw){
+        String x=JarvisSmartRouter.normalize(raw==null?"":raw);
+        x=x.replaceFirst("(?iu).*?(каждые|через каждые|повторяй(?:\s+команду)?|интервальный таймер|интервал)\\s*","").trim();
+        x=x.replaceFirst("(?iu)\\b\\d+\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч)\\b","").trim();
+        x=x.replaceAll("(?iu)\\b(ноль|одну|один|одна|две|два|три|четыре|пять|шесть|семь|восемь|девять|десять|одиннадцать|двенадцать|тринадцать|четырнадцать|пятнадцать|двадцать|тридцать)\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч)\\b","").trim();
+        x=x.replaceFirst("(?iu)^(?:мне|мне пожалуйста|пожалуйста)\\s*","").trim();
+        if(x.isEmpty()) return "Интервальный сигнал";
+        if(x.startsWith("и ")) x=x.substring(2).trim();
+        return x.length()>70?x.substring(0,70):x;
+    }
+
+    private int parseDuration(String s){
+        String x=s==null?"":s.toLowerCase(new Locale("ru")).replace('ё','е');
+        int total=0; boolean found=false;
+        Matcher m=Pattern.compile("(\\d+)\\s*(секунд|секунды|сек|минут|мин|час|часа|часов|ч|день|дня|дней|сутки|суток)").matcher(x);
+        while(m.find()){
+            long n=Long.parseLong(m.group(1)); String u=m.group(2); long mul;
+            if(u.startsWith("сек")) mul=1; else if(u.startsWith("мин")) mul=60; else if(u.startsWith("час")||u.equals("ч")) mul=3600; else mul=86400;
+            long v=n*mul; total=(int)Math.min(Integer.MAX_VALUE,(long)total+v); found=true;
+        }
+        if(found)return total;
+        if(x.matches(".*\\b(каждый|каждые|каждую)\\s+(час|сутки|день|дня|дней)\\b.*")){
+            if(x.contains("час"))return 3600; return 86400;
+        }
+        String[] units={"секунд","секунды","сек","минут","мин","час","часа","часов","ч","день","дня","дней","сутки","суток"};
+        LinkedHashMap<String,Integer> words=new LinkedHashMap<>();
+        words.put("ноль",0); words.put("одну",1); words.put("один",1); words.put("одна",1); words.put("две",2); words.put("два",2); words.put("три",3); words.put("четыре",4); words.put("пять",5); words.put("шесть",6); words.put("семь",7); words.put("восемь",8); words.put("девять",9); words.put("десять",10); words.put("одиннадцать",11); words.put("двенадцать",12); words.put("тринадцать",13); words.put("четырнадцать",14); words.put("пятнадцать",15); words.put("двадцать",20); words.put("тридцать",30);
+        for(Map.Entry<String,Integer> e:words.entrySet()){
+            for(String u:units){
+                Matcher wm=Pattern.compile("\\b"+Pattern.quote(e.getKey())+"\\b\\s*"+Pattern.quote(u)+"\\b").matcher(x);
+                if(wm.find()){int n=e.getValue(); if(u.startsWith("сек"))return n; if(u.startsWith("мин"))return n*60; if(u.startsWith("час")||u.equals("ч"))return n*3600; return n*86400;}
+            }
+        }
+        return 0;
+    }
+
+    private boolean handleExtendedUtilityCommand(String original,String c){
+        try{
+            if(c.matches(".*\\b(громкость|звук)\\s+(ноль|100|[0-9]{1,2})\\s*(процент|процента|процентов|%)?.*")){
+                Matcher m=Pattern.compile("(\\d{1,3})\\s*(?:процент|процента|процентов|%)?").matcher(c);
+                if(m.find()){int pct=Math.max(0,Math.min(100,Integer.parseInt(m.group(1)))); AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE); int max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC); am.setStreamVolume(AudioManager.STREAM_MUSIC,Math.round(max*pct/100f),AudioManager.FLAG_SHOW_UI); reply("Громкость установлена на "+pct+" процентов."); return true;}
+            }
+            if(c.matches(".*\\b(выключи звук|без звука|режим без звука|поставь на беззвучный)\\b.*")){ AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE); am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_MUTE,AudioManager.FLAG_SHOW_UI); reply("Звук выключен."); return true; }
+            if(c.matches(".*\\b(включи звук|верни звук|со звуком)\\b.*")){ AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE); am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_UNMUTE,AudioManager.FLAG_SHOW_UI); reply("Звук включён."); return true; }
+            if(c.matches(".*\\b(яркость|яркость экрана)\\s+\\d{1,3}\\s*(процент|процента|процентов|%)?.*")){
+                Matcher m=Pattern.compile("(\\d{1,3})\\s*(?:процент|процента|процентов|%)?").matcher(c); if(m.find()){int pct=Math.max(0,Math.min(100,Integer.parseInt(m.group(1))));
+                    if(!Settings.System.canWrite(context)){open(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,Uri.parse("package:"+context.getPackageName())),"Android требует разрешение на изменение яркости. Открываю его."); return true;}
+                    int value=Math.round(255*pct/100f); Settings.System.putInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS,value); reply("Яркость установлена на "+pct+" процентов."); return true;
+                }
+            }
+            if(c.matches(".*\\b(режим не беспокоить|не беспокоить|не тревожить)\\b.*")){open(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS),"Открываю настройки режима «Не беспокоить».");return true;}
+            if(c.matches(".*\\b(геолокац|местоположен).*(настрой|включ|разреш).*")){open(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),"Открываю настройки геолокации.");return true;}
+            if(c.matches(".*\\b(авиарежим|режим полета|режим полёта)\\b.*")){open(new Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS),"Открываю настройки авиарежима.");return true;}
+            if(c.matches(".*\\b(оптимизац.*батаре|экономи.*батаре|энергосбережен).*")){open(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),"Открываю настройки оптимизации батареи.");return true;}
+            if(c.matches(".*\\b(информация|сведения)\\s+(о|об)\\s+приложени.*")){open(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:"+context.getPackageName())),"Открываю сведения о JARVIS.");return true;}
+            if(c.matches(".*\\b(очисти|забудь|удали)\\s+(память|все воспоминания|все данные памяти).*")){memory.clear(); prefs.edit().clear().apply(); reply("Локальная память JARVIS очищена."); return true;}
+        }catch(Throwable ignored){}
+        return false;
+    }
+
+    private boolean handleExtendedDeviceCommand(String original, String c){
+        try{
+            if(c.matches(".*\\b(сколько осталось|остаток таймера|сколько до таймера)\\b.*")){
+                long end=context.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).getLong("end",0L);
+                if(end<=0){reply("Активного таймера нет.");return true;}
+                long left=Math.max(0,(end-System.currentTimeMillis())/1000L);
+                if(left==0){reply("Таймер уже завершился.");context.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().clear().apply();}
+                else reply("Осталось "+TimerTool.format((int)Math.min(Integer.MAX_VALUE,left))+".");
+                return true;
+            }
+            if(c.matches(".*\\b(секундомер|запусти секундомер|останови секундомер|сбрось секундомер|сколько времени на секундомере)\\b.*")){
+                android.content.SharedPreferences sp=context.getSharedPreferences("jarvis_stopwatch",Context.MODE_PRIVATE);
+                if(c.contains("сброс")){sp.edit().clear().apply();reply("Секундомер сброшен.");return true;}
+                if(c.contains("останов")){long st=sp.getLong("start",0);if(st==0){reply("Секундомер не запущен.");}else{long sec=Math.max(0,(System.currentTimeMillis()-st)/1000);sp.edit().putLong("elapsed",sec).putLong("start",0).apply();reply("Секундомер остановлен. Время: "+TimerTool.format((int)Math.min(Integer.MAX_VALUE,sec))+".");}return true;}
+                if(c.contains("сколько")||c.contains("времени")){long st=sp.getLong("start",0),el=sp.getLong("elapsed",0);if(st>0)el+=(System.currentTimeMillis()-st)/1000;reply("Секундомер: "+TimerTool.format((int)Math.min(Integer.MAX_VALUE,el))+".");return true;}
+                if(sp.getLong("start",0)==0)sp.edit().putLong("start",System.currentTimeMillis()).apply();reply("Секундомер запущен.");return true;
+            }
+            if(c.matches(".*\\b(громкость|звук)\\s+\\d{1,3}\\s*(процент|процента|процентов|%)?.*")){
+                Matcher m=Pattern.compile("(\\d{1,3})\\s*(?:процент|процента|процентов|%)?").matcher(c);
+                if(m.find()){int pct=Math.max(0,Math.min(100,Integer.parseInt(m.group(1))));AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);int max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);am.setStreamVolume(AudioManager.STREAM_MUSIC,Math.round(max*pct/100f),AudioManager.FLAG_SHOW_UI);reply("Громкость установлена на "+pct+" процентов.");return true;}
+            }
+            if(c.matches(".*\\b(фонарик|вспышк).*(включ|выключ|отключ|запусти|останов).*")){toggleTorch();return true;}
+            if(c.matches(".*\\b(контакты|контакты телефона|телефонная книга)\\b.*")){open(new Intent(Intent.ACTION_VIEW,Uri.parse("content://contacts/people/")),"Открываю контакты.");return true;}
+            if(c.matches(".*\\b(календарь|мой календарь)\\b.*")){open(new Intent(Intent.ACTION_VIEW,Uri.parse("content://com.android.calendar/time/")),"Открываю календарь.");return true;}
+            if(c.matches(".*\\b(системная информация|информация о телефоне|характеристики телефона)\\b.*")){open(new Intent(Settings.ACTION_DEVICE_INFO_SETTINGS),"Открываю информацию об устройстве.");return true;}
+            if(c.matches(".*\\b(батарея|аккумулятор).*(настрой|состояни|информац).*")){open(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS),"Открываю настройки батареи.");return true;}
+        }catch(Throwable ignored){}
+        return false;
+    }
+
     private void calculator(String c){String x=c.replace("умножить на","*").replace("умножить","*").replace("помножить","*").replace("поделить на","/").replace("поделить","/").replace("делить на","/").replace("плюс","+").replace("минус","-").replace(',','.').replaceAll("[^0-9+*/.\\-]","");Matcher m=Pattern.compile("(-?\\d+(?:\\.\\d+)?)([+*/-])(-?\\d+(?:\\.\\d+)?)").matcher(x);if(!m.find()){reply("Скажите выражение, например: 125 умножить на 8.");return;}try{double a=Double.parseDouble(m.group(1)),b=Double.parseDouble(m.group(3));if("/".equals(m.group(2))&&b==0){reply("На ноль делить нельзя.");return;}double r="+".equals(m.group(2))?a+b:"-".equals(m.group(2))?a-b:"*".equals(m.group(2))?a*b:a/b;reply("Результат: "+(r==Math.rint(r)?Long.toString((long)r):String.format(Locale.US,"%.6f",r).replaceAll("0+$","" ).replaceAll("\\.$","")));}catch(Exception e){reply("Не удалось вычислить выражение.");}}
     private void toggleTorch(){if(Build.VERSION.SDK_INT<23){reply("Фонарик не поддерживается.");return;}try{CameraManager cm=(CameraManager)context.getSystemService(Context.CAMERA_SERVICE);String id=cm.getCameraIdList()[0];boolean on=prefs.getBoolean("torch",false);cm.setTorchMode(id,!on);prefs.edit().putBoolean("torch",!on).apply();reply(!on?"Фонарик включён.":"Фонарик выключен.");}catch(Exception e){reply("Не удалось управлять фонариком.");}}
     private void adjustVolume(String c){AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);if(c.contains("увелич")||c.contains("громче")){am.adjustVolume(AudioManager.ADJUST_RAISE,AudioManager.FLAG_SHOW_UI);reply("Громкость увеличена.");}else if(c.contains("умень")||c.contains("тише")){am.adjustVolume(AudioManager.ADJUST_LOWER,AudioManager.FLAG_SHOW_UI);reply("Громкость уменьшена.");}else reply("Скажите: громче или тише.");}
@@ -509,5 +611,42 @@ public final class JarvisEngine {
     public void shutdown(){web.shutdown();video.shutdown();}
 
     static final class TimerTool {private static final int TIMER_ID=78;static void start(Context c,int seconds,Callback cb){if(seconds<=0){cb.reply("Не удалось определить длительность таймера.");return;}try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);long at=System.currentTimeMillis()+seconds*1000L;if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));cb.reply("Android требует разрешение на точные будильники. После выдачи разрешения повторите команду.");return;}if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);else am.setExact(AlarmManager.RTC_WAKEUP,at,pi);c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().putLong("end",at).putInt("seconds",seconds).apply();cb.reply("Таймер установлен на "+format(seconds)+".");}catch(Throwable e){cb.reply("Не удалось установить таймер. Проверьте разрешение на точные будильники.");}}static void cancel(Context c,Callback cb){try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(pi);pi.cancel();c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().clear().apply();cb.reply("Таймер отменён.");}catch(Throwable e){cb.reply("Не удалось отменить таймер.");}}static String format(int s){if(s>=3600)return(s/3600)+" ч";if(s%60==0)return(s/60)+" мин";return s+" сек";}}
+    static final class IntervalTimerTool {
+        private static final int ID=79;
+        private static final String PREF="jarvis_interval_timer";
+        static void start(Context c,int seconds,String label,Callback cb){
+            if(seconds<=0){cb.reply("Не удалось определить интервал.");return;}
+            try{
+                AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
+                if(am==null){cb.reply("Системный планировщик недоступен.");return;}
+                if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){
+                    c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    cb.reply("Android требует разрешение на точные будильники. После выдачи разрешения повторите команду.");return;
+                }
+                long now=System.currentTimeMillis(), next=now+seconds*1000L;
+                schedule(c,seconds,next);
+                c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().putBoolean("enabled",true).putInt("seconds",seconds).putLong("next",next).putString("label",label==null?"Интервальный сигнал":label).apply();
+                cb.reply("Интервальный таймер включён: каждые "+TimerTool.format(seconds)+".");
+            }catch(Throwable e){cb.reply("Не удалось включить интервальный таймер.");}
+        }
+        static void schedule(Context c,int seconds,long at){
+            try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_INTERVAL");PendingIntent pi=PendingIntent.getBroadcast(c,ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);else am.setExact(AlarmManager.RTC_WAKEUP,at,pi);}catch(Throwable ignored){}
+        }
+        static void rearm(Context c){
+            android.content.SharedPreferences sp=c.getSharedPreferences(PREF,Context.MODE_PRIVATE);
+            if(!sp.getBoolean("enabled",false))return;
+            int seconds=sp.getInt("seconds",0); if(seconds<=0)return;
+            AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
+            if(am==null)return;
+            if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms())return;
+            long now=System.currentTimeMillis(); long previous=sp.getLong("next",0L);
+            long next=(previous>0?previous:now)+seconds*1000L; if(next<=now)next=now+seconds*1000L;
+            schedule(c,seconds,next); sp.edit().putLong("next",next).apply();
+        }
+        static void cancel(Context c,Callback cb){
+            try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_INTERVAL");PendingIntent pi=PendingIntent.getBroadcast(c,ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(pi);pi.cancel();c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().clear().apply();cb.reply("Интервальный таймер остановлен.");}catch(Throwable e){cb.reply("Не удалось остановить интервальный таймер.");}
+        }
+    }
+
     static final class AlarmTool {static void schedule(Context c,String text,Callback cb){Matcher m=Pattern.compile("(?:на|в)\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(text);if(!m.find()){cb.reply("Скажите время, например: будильник на 07:00.");return;}try{int hh=Integer.parseInt(m.group(1)),mm=m.group(2)==null?0:Integer.parseInt(m.group(2));if(hh>23||mm>59)throw new Exception();Calendar cal=Calendar.getInstance();cal.set(Calendar.HOUR_OF_DAY,hh);cal.set(Calendar.MINUTE,mm);cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);if(cal.before(Calendar.getInstance()))cal.add(Calendar.DAY_OF_YEAR,1);AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_ALARM");PendingIntent pi=PendingIntent.getBroadcast(c,77,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));cb.reply("Откройте разрешение на точные будильники, затем повторите команду.");return;}if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);else am.setExact(AlarmManager.RTC_WAKEUP,cal.getTimeInMillis(),pi);cb.reply(String.format(Locale.getDefault(),"Будильник установлен на %02d:%02d.",hh,mm));}catch(Exception e){cb.reply("Не удалось установить будильник.");}}}
 }
