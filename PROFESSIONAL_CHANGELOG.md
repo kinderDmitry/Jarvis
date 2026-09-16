@@ -43,3 +43,8 @@ Android does not provide a universal public API that lets a third-party assistan
 
 ## Build verification
 A local Android SDK/Gradle installation was not available in the execution environment used to edit this archive, so a real `assembleRelease` could not be executed here. The included GitHub Actions workflow remains the authoritative release build path and runs Gradle 8.11.1 with Java 17.
+
+## 5.40.1 — Release build fix
+- Fixed `JarvisVoiceSession.java`: `VoiceInteractionSession.getWindow()` returns a `Dialog`, not a `Window`.
+- The session surface now obtains the actual `Window` via `Dialog.getWindow()` before applying transparent background and dim-behind settings.
+- No functional change to voice recognition or media routing.
