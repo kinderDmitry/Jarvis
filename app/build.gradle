@@ -11,12 +11,16 @@ android {
             keyPassword 'jarvis-release-2026'
         }
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
     defaultConfig {
         applicationId 'com.jarvis.homemultitool'
         minSdk 26
         targetSdk 35
-        versionCode 43
-        versionName '5.43.0-professional-ai'
+        versionCode 46
+        versionName '5.46.0-professional-ai'
     }
     buildTypes {
         release {
