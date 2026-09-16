@@ -31,7 +31,7 @@ public class JarvisVoiceSession extends android.service.voice.VoiceInteractionSe
         answer=tv("",16,Color.WHITE);answer.setMaxLines(4);card.addView(answer,new LinearLayout.LayoutParams(-1,88));
         TextView hint=tv("Голосовой режим • приложение не открывается",10,Color.rgb(110,140,160));card.addView(hint,new LinearLayout.LayoutParams(-1,32));
         FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,300,Gravity.BOTTOM);root.addView(card,cp);
-        try{Window w=getWindow();if(w!=null){w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));WindowManager.LayoutParams a=w.getAttributes();a.dimAmount=0f;w.setAttributes(a);w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);}}catch(Throwable ignored){}
+        try{android.app.Dialog d=getWindow();Window w=d==null?null:d.getWindow();if(w!=null){w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));WindowManager.LayoutParams a=w.getAttributes();a.dimAmount=0f;w.setAttributes(a);w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);}}catch(Throwable ignored){}
         return root;
     }
 
