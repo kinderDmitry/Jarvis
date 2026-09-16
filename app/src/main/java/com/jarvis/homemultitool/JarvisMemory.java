@@ -142,6 +142,33 @@ public final class JarvisMemory {
     public int learnedCount(){
         try{return new JSONObject(p.getString("aliases","{}")).length();}catch(Throwable e){return 0;}
     }
+
+    /** Returns the best learned action together with its confidence score. */
+    public synchronized LearnedMatch bestLearned(String phrase){
+        String k=normalize(phrase);
+        if(k.isEmpty()) return new LearnedMatch("",0);
+        try{
+            JSONObject o=new JSONObject(p.getString("aliases","{}"));
+            JSONObject exact=o.optJSONObject(k);
+            if(exact!=null) return new LearnedMatch(exact.optString("action",""),1.0);
+            JSONArray names=o.names(); if(names==null)return new LearnedMatch("",0);
+            String action=""; double best=0;
+            for(int i=0;i<names.length();i++){
+                String key=names.optString(i); JSONObject item=o.optJSONObject(key); if(item==null)continue;
+                double score=similarity(k,key);
+                int uses=item.optInt("uses",0);
+                score=Math.min(1.0,score + Math.min(0.08,uses*0.01));
+                if(score>best){best=score;action=item.optString("action","");}
+            }
+            return new LearnedMatch(action,best);
+        }catch(Throwable e){return new LearnedMatch("",0);}
+    }
+
+    public static final class LearnedMatch {
+        public final String action; public final double confidence;
+        LearnedMatch(String a,double c){action=a==null?"":a;confidence=c;}
+    }
+
     public void clear(){p.edit().clear().apply();}
     private String normalize(String s){return s==null?"":s.toLowerCase(new Locale("ru")).replace('ё','е').replaceAll("[^а-яa-z0-9 ]"," ").replaceAll("\\s+"," ").trim();}
 }

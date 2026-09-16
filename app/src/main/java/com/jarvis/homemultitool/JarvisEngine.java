@@ -16,13 +16,15 @@ import java.util.regex.*;
 /** Deterministic local command brain with real device actions and live web/weather retrieval. */
 public final class JarvisEngine {
     public interface Callback { void reply(String text); void state(String state); }
-    private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web=new WebSearchEngine(); private final JarvisMemory memory; private final VideoSearchEngine video=new VideoSearchEngine();
+    private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web=new WebSearchEngine(); private final JarvisMemory memory; private final JarvisAdaptiveBrain adaptive; private final VideoSearchEngine video=new VideoSearchEngine(); private final JarvisLocalAI localAI=new JarvisLocalAI();
     private String lastCity="Москва", lastTopic="", lastUserMessage="";
+    private String previousUserMessage="";
+    private boolean executingLearned=false;
     private String lastAssistantQuestion="";
     private String pendingMusicTrack="";
     private String pendingMusicApp="";
     private String lastIntentCommand="";
-    public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);memory=new JarvisMemory(context);}
+    public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);memory=new JarvisMemory(context);adaptive=new JarvisAdaptiveBrain(context);}
 
     public void handle(final String raw){
         try { handleInternal(raw); } catch (Throwable fatal) { cb.state("ГОТОВ"); cb.reply("Я не смог безопасно выполнить эту команду. Попробуйте сказать её иначе."); }
@@ -30,7 +32,19 @@ public final class JarvisEngine {
 
     private void handleInternal(final String raw){
         if(raw==null||raw.trim().isEmpty())return;
-        final String original=raw.trim(); final String c=JarvisSmartRouter.normalize(original); lastUserMessage=original; lastIntentCommand=c; cb.state("ОБРАБОТКА");
+        final String original=raw.trim(); String c=JarvisSmartRouter.normalize(original); previousUserMessage=lastUserMessage; lastUserMessage=original; lastIntentCommand=c; learnPreference(original,c); cb.state("ОБРАБОТКА");
+        JarvisLocalAI.Decision ai=localAI.analyze(original,c,lastTopic,prefs.getString("preferred_music_app",""),memory);
+        JarvisAdaptiveBrain.Match learnedBrain=adaptive.predict(original);
+        if(learnedBrain.confidence>=0.84 && !learnedBrain.intent.isEmpty() && !"UNKNOWN".equals(learnedBrain.intent)) {
+            c=JarvisSmartRouter.normalize(learnedBrain.intent);
+            cb.state("АДАПТИВНОЕ ПОНИМАНИЕ");
+        }
+        if(ai.confidence>=0.72 && !"UNKNOWN".equals(ai.intent) && !"LEARNED".equals(ai.intent)){
+            if(JarvisLocalAI.NEXT.equals(ai.intent)||JarvisLocalAI.PREVIOUS.equals(ai.intent)||JarvisLocalAI.PAUSE.equals(ai.intent)||JarvisLocalAI.PLAY.equals(ai.intent)) c=ai.canonical;
+            else if(JarvisLocalAI.WEATHER.equals(ai.intent) && (c.equals("завтра")||c.equals("послезавтра")||c.equals("а завтра")||c.equals("а послезавтра"))) c=ai.canonical;
+        }
+        if("LEARNED".equals(ai.intent) && !ai.canonical.isEmpty()) { c=JarvisSmartRouter.normalize(ai.canonical); cb.state("ОБУЧЕННАЯ КОМАНДА"); }
+        lastIntentCommand=c;
         if(isWakeOnly(c)){reply("Я на связи, сэр. Слушаю вас.");return;}
         if(handleConversation(c))return;
         if(isGreeting(c)&&!(c.contains("как дела")||c.contains("как ты")||c.contains("как поживаешь"))){reply(greeting(c));return;}
@@ -81,13 +95,32 @@ public final class JarvisEngine {
         if(c.matches("^(запиши|запомни|сохрани).*")){save(original.replaceFirst("(?iu)^(запиши|запомни|сохрани)\\s*:??\\s*",""));return;}
         if(c.matches(".*(научи|запомни команду|если я говорю).*(делай|выполняй).*") ){String z=original.replaceFirst("(?iu).*?(?:научи|запомни команду|если я говорю)\\s*","");Matcher lm=Pattern.compile("(?iu)^(.+?)\\s+(?:то\\s+)?(?:делай|выполняй)\\s+(.+)$").matcher(z);if(lm.find()){String phrase=lm.group(1).trim(),action=lm.group(2).trim();memory.learnAlias(phrase,action);reply("Запомнил. Когда вы скажете «"+phrase+"», я буду выполнять: «"+action+"»." );}else reply("Скажите: «Научи: когда я говорю открыть музыку, выполняй открой Яндекс Музыку»." );return;}
         String learned=memory.alias(c);
-        if(!learned.isEmpty()&&!learned.equalsIgnoreCase(original)){cb.state("ОБУЧЕННАЯ КОМАНДА");handleInternal(learned);return;}
+        if(!executingLearned&&!learned.isEmpty()&&!learned.equalsIgnoreCase(original)){cb.state("ОБУЧЕННАЯ КОМАНДА");executingLearned=true;try{handleInternal(learned);}finally{executingLearned=false;}return;}
         String inferred=memory.inferAlias(c);
-        if(!inferred.isEmpty()&&!inferred.equalsIgnoreCase(c)){cb.state("АДАПТИРОВАЛ КОМАНДУ");handleInternal(inferred);return;}
+        if(!executingLearned&&!inferred.isEmpty()&&!inferred.equalsIgnoreCase(c)){cb.state("АДАПТИРОВАЛ КОМАНДУ");executingLearned=true;try{handleInternal(inferred);}finally{executingLearned=false;}return;}
         if(isCasual(c)||isShortConversation(c)){reply(casualReply(c));return;}
-        if(isExplicitInformationRequest(c)){web.search(original,new WebSearchEngine.Callback(){public void result(String t,String s){reply((s==null||s.isEmpty())?t:t+"\n\nИсточник: "+s);}public void state(String s){cb.state(s);}});return;}
-        reply("Я понял запрос, но не хочу угадывать. Скажите, что именно нужно сделать, например: «открой приложение», «включи музыку», «найди фильм» или «запомни, что …». После вашего уточнения я сохраню эту формулировку как привычную команду.");
+        if(isExplicitInformationRequest(c)){ searchKnowledge(original); return; }
+        // Unknown natural-language questions are routed to the web knowledge layer instead of being rejected.
+        if(c.endsWith("?") || c.length()>12){ searchKnowledge(original); return; }
+        reply("Я понял вас, но для выполнения действия мне не хватает контекста. Уточните, что именно сделать.");
     }
+    private void searchKnowledge(String query){
+        String q=query==null?"":query.trim();
+        if(q.isEmpty()){reply("Скажите, что именно нужно узнать.");return;}
+        boolean volatileInfo=isExplicitInformationRequest(JarvisSmartRouter.normalize(q));
+        String cached=adaptive.cachedKnowledge(q,volatileInfo);
+        if(!cached.isEmpty()){cb.state("ЗНАНИЕ ИЗ ПАМЯТИ");reply(cached);return;}
+        final String fq=q;
+        web.search(fq,new WebSearchEngine.Callback(){
+            public void result(String t,String s){
+                String out=(s==null||s.isEmpty())?t:t+"\n\nИсточник: "+s;
+                if(t!=null&&!t.toLowerCase(new Locale("ru")).contains("не удалось")) adaptive.cacheKnowledge(fq,out,s);
+                reply(out);
+            }
+            public void state(String s){cb.state(s);}
+        });
+    }
+
     private boolean handleConversation(String c){
         if(lastAssistantQuestion.equals("music_app")){
             String app=""; if(c.contains("яндекс"))app="yandex"; else if(c.matches(".*\\b(вк|vk)\\b.*"))app="vk";
@@ -108,77 +141,242 @@ public final class JarvisEngine {
         return false;
     }
 
+    /**
+     * Context-aware music controller. The standard Android media-session path is
+     * provider-neutral; provider-specific URLs are used only when the user asks
+     * to search/open content in an app.
+     */
     private void handleMusic(String original,String c){
         String app="";
-        if(c.contains("яндекс")) app="yandex"; else if(c.matches(".*\\b(вк|vk)\\b.*")) app="vk";
+        if(c.contains("яндекс")) app="yandex";
+        else if(c.matches(".*\\b(вк|vk)\\b.*")) app="vk";
+        else if(c.contains("spotify")) app="spotify";
+        else if(c.contains("youtube music")||c.contains("ютуб музыку")||c.contains("ютуб музыка")) app="youtube";
+
+        boolean liked=c.matches(".*(моя любим|мои любим|любим(ая|ое|ые)|понравивш|избранн|лайкнут|моя музыка|мои песни).*");
+        boolean continuePlay=c.matches(".*(продолж|возобнов|дальше|включи обратно|сними с пауз).*");
+        boolean shuffle=c.matches(".*(вперемешку|перемешай|случайн|рандом).*");
+        boolean playlist=c.contains("плейлист");
+
+        // "В дороге / для танцев / для спорта / для работы" are semantic modes,
+        // not fixed playlists. The mode is remembered and can be replaced later.
+        String mode=extractMusicMode(c);
+        if(!mode.isEmpty()) prefs.edit().putString("music_mode",mode).apply();
+        else mode=prefs.getString("music_mode","");
+
+        String track=extractMusicTarget(original);
+        if(isMusicModeOnly(track))track="";
+
+        // "переключи с танцев на дорогу" should replace the mode and search again,
+        // rather than merely skipping the current song.
+        if(!mode.isEmpty() && (track.isEmpty() || track.matches("(?iu).*(с|из)\\s+(?:режима\\s+)?(танцев|дороги|спорта|работы|релаксации|сна).*")) && !liked && !continuePlay && !playlist){
+            track=mode;
+        }
+
+        if(continuePlay && track.isEmpty() && !liked){
+            boolean ok=JarvisMediaSessionService.control("play");
+            if(!ok) scheduleMediaPlay(150);
+            reply(ok?"Продолжаю воспроизведение.":"Пытаюсь продолжить воспроизведение в активном плеере.");
+            return;
+        }
+
+        if(liked && track.isEmpty()){
+            String preferred=prefs.getString("preferred_music_app","");
+            String pkg=findMusicPackage(preferred);
+            if(pkg==null){
+                String active=JarvisMediaSessionService.activePackage();
+                if(!active.isEmpty())pkg=active;
+            }
+            if(pkg==null){
+                pendingMusicTrack="";
+                pendingMusicApp=preferred;
+                lastAssistantQuestion="music_app";
+                reply("Какое музыкальное приложение использовать для ваших понравившихся?");
+                return;
+            }
+            prefs.edit().putString("preferred_music_app",providerKey(pkg)).apply();
+            openMusic(pkg,"",true,false,false,false);
+            return;
+        }
+
         if(app.isEmpty()) app=prefs.getString("preferred_music_app","");
-        String low=c;
-        boolean liked=low.matches(".*(любим|понравивш|нравится|лайк|мне нравится|избранн|любимое).*");
-        boolean favorites=low.matches(".*(любим|понравивш|нравится|лайк|мне нравится|избранн|любимое).*");
-        boolean continuePlay=low.matches(".*(продолж|возобнов|дальше|включи обратно).*");
-        boolean shuffle=low.matches(".*(вперемешку|перемешай|случайн).*");
-        boolean playlist=low.contains("плейлист");
-        String track=original.replaceFirst("(?iu).*?(включи|поставь|запусти|проиграй|сыграй|включать)\\s*"," ").trim();
-        track=track.replaceFirst("(?iu)^(яндекс\\s*музык[ау]?|вк\\s*музык[ау]?|vk\\s*музык[ау]?|музыку|музыка|песни|песню)\\s*"," ").trim();
-        if(track.matches("(?iu)^(любим(ые|ую)?|понравивш(иеся|ие)|мне нравится|избранное|моя музыка|мои песни|плейлист|музыку)$")) track="";
         String pkg=findMusicPackage(app);
-        if(pkg==null){pendingMusicTrack=track;pendingMusicApp=app;lastAssistantQuestion="music_app";reply("Какое музыкальное приложение использовать? Например: Яндекс Музыка или VK Музыка.");return;}
-        if(!app.isEmpty())prefs.edit().putString("preferred_music_app",app).apply();
-        openMusic(pkg,track,liked||favorites,continuePlay,shuffle,playlist);
+
+        // If no provider is selected, prefer the currently active media app.
+        if(pkg==null && app.isEmpty()){
+            String active=JarvisMediaSessionService.activePackage();
+            if(!active.isEmpty())pkg=active;
+        }
+
+        // If the user named an installed app we do not know, resolve it by label.
+        if(pkg==null && !app.isEmpty()) pkg=findInstalledAppByText(app);
+
+        if(pkg==null){
+            pendingMusicTrack=track;
+            pendingMusicApp=app;
+            lastAssistantQuestion="music_app";
+            reply("Какое музыкальное приложение использовать? Можно назвать любое установленное приложение.");
+            return;
+        }
+
+        prefs.edit().putString("preferred_music_app",providerKey(pkg)).apply();
+        openMusic(pkg,track,false,false,shuffle,playlist);
+    }
+
+    private String extractMusicTarget(String original){
+        String q=original==null?"":original.trim();
+        q=q.replaceFirst("(?iu)^.*?(включи|поставь|запусти|проиграй|сыграй|найди|поищи|воспроизведи|переключи|измени|смени)\\s*","");
+        q=q.replaceFirst("(?iu)^(?:мне\\s+)?(?:музыку|музыка|песни|песню|трек)\\s*","");
+        q=q.replaceFirst("(?iu)^(?:в|для)\\s+(дороге|танцев|спорта|работы|фона|сна|релаксации|отдыха)\\s*$","");
+        q=q.replaceFirst("(?iu)^.*?(?:с|из)\\s+(?:режима\\s+)?(?:танцев|дороги|спорта|работы|релаксации|сна)\\s+(?:на|в|для)\\s+(?:режим\\s+)?(?:дорог[уе]|танцев|спорта|работы|релаксаци[ию]|сна).*$","");
+        return q.trim();
+    }
+
+    private String extractMusicMode(String c){
+        if(c.contains("в дороге")||c.contains("для дороги")||c.contains("дорожн")||c.contains("за рулем")||c.contains("за рулём")) return "в дорогу";
+        if(c.contains("для танцев")||c.contains("танцевальн")||c.contains("потанцевать")) return "для танцев";
+        if(c.contains("для спорта")||c.contains("трениров")||c.contains("в спортзале")) return "для спорта";
+        if(c.contains("для работы")||c.contains("работать")||c.contains("концентрац")) return "для работы";
+        if(c.contains("расслаб")||c.contains("релакс")) return "для расслабления";
+        if(c.contains("для сна")||c.contains("уснуть")) return "для сна";
+        return "";
+    }
+
+    private boolean isMusicModeOnly(String q){
+        if(q==null||q.isEmpty())return true;
+        String x=q.toLowerCase(new Locale("ru")).trim();
+        return x.matches("^(в\\s+дорогу|для\\s+дороги|для\\s+танцев|для\\s+спорта|для\\s+работы|для\\s+расслабления|для\\s+сна)$");
+    }
+
+    private String providerKey(String pkg){
+        String p=pkg==null?"":pkg.toLowerCase(Locale.ROOT);
+        if(p.contains("yandex")&&p.contains("music"))return "yandex";
+        if(p.contains("spotify"))return "spotify";
+        if(p.contains("uma.musicvk")||p.contains("vk"))return "vk";
+        if(p.contains("youtube")&&p.contains("music"))return "youtube";
+        return pkg==null?"":pkg;
+    }
+
+    private String findInstalledAppByText(String text){
+        if(text==null||text.trim().isEmpty())return null;
+        try{
+            PackageManager pm=context.getPackageManager();
+            Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            String q=text.toLowerCase(new Locale("ru")).replace('ё','е').trim();
+            android.content.pm.ResolveInfo best=null;int score=0;
+            for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(probe,PackageManager.MATCH_ALL)){
+                if(ri.activityInfo==null||context.getPackageName().equals(ri.activityInfo.packageName))continue;
+                String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');
+                String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);
+                int sc=0;
+                if(label.equals(q))sc=120;
+                else if(label.contains(q)||q.contains(label))sc=85;
+                for(String w:q.split("\\s+"))if(w.length()>2&&label.contains(w))sc+=15;
+                if(pkg.contains(q.replace(' ','.')))sc+=25;
+                if(sc>score){score=sc;best=ri;}
+            }
+            return best!=null&&score>=35?best.activityInfo.packageName:null;
+        }catch(Throwable ignored){return null;}
     }
 
     private String findMusicPackage(String preferred){
         try{
             PackageManager pm=context.getPackageManager();
-            if("yandex".equals(preferred) && pm.getLaunchIntentForPackage("ru.yandex.music")!=null) return "ru.yandex.music";
-            if("vk".equals(preferred) && pm.getLaunchIntentForPackage("com.uma.musicvk")!=null) return "com.uma.musicvk"; Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-            List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);
-            String best=null;int score=0;int musicCount=0;String only=null;
-            for(android.content.pm.ResolveInfo ri:apps){if(ri.activityInfo==null)continue;String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);boolean music=label.contains("музык")||label.contains("music")||pkg.contains("music");if(!music)continue;musicCount++;only=ri.activityInfo.packageName;int sc=80;
-                if(preferred.equals("yandex")&&((label.contains("яндекс")&&label.contains("музык"))||(pkg.contains("yandex")&&pkg.contains("music"))))sc=180;
-                if(preferred.equals("vk")&&((label.contains("vk")||label.contains("вк")||pkg.contains("com.uma.musicvk"))&&(label.contains("музык")||label.contains("music")||pkg.contains("com.uma.musicvk"))))sc=180;
+            if(preferred==null)preferred="";
+            String p=preferred.toLowerCase(Locale.ROOT);
+            if(preferred.contains(".") && pm.getLaunchIntentForPackage(preferred)!=null) return preferred;
+            if("yandex".equals(p)&&pm.getLaunchIntentForPackage("ru.yandex.music")!=null)return "ru.yandex.music";
+            if("vk".equals(p)&&pm.getLaunchIntentForPackage("com.uma.musicvk")!=null)return "com.uma.musicvk";
+            if("spotify".equals(p)&&pm.getLaunchIntentForPackage("com.spotify.music")!=null)return "com.spotify.music";
+            if("youtube".equals(p)&&pm.getLaunchIntentForPackage("com.google.android.apps.youtube.music")!=null)return "com.google.android.apps.youtube.music";
+
+            String active=JarvisMediaSessionService.activePackage();
+            if(p.isEmpty()&&!active.isEmpty()&&pm.getLaunchIntentForPackage(active)!=null)return active;
+
+            Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            String best=null;int score=0;
+            for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(probe,PackageManager.MATCH_ALL)){
+                if(ri.activityInfo==null)continue;
+                String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');
+                String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);
+                boolean media=label.contains("музык")||label.contains("music")||label.contains("spotify")||
+                        label.contains("радио")||label.contains("podcast")||pkg.contains("music")||pkg.contains("spotify");
+                if(!media)continue;
+                int sc=60;
+                if(p.contains("yandex")&&(label.contains("яндекс")||pkg.contains("yandex")))sc+=120;
+                if(p.contains("vk")&&(label.contains("vk")||label.contains("вк")||pkg.contains("vk")))sc+=120;
+                if(p.contains("spotify")&&(label.contains("spotify")||pkg.contains("spotify")))sc+=120;
+                if(p.contains("youtube")&&(label.contains("youtube")||pkg.contains("youtube")))sc+=120;
                 if(sc>score){score=sc;best=ri.activityInfo.packageName;}
             }
-            if(!preferred.isEmpty()) return score>=150?best:null;
-            return musicCount==1?only:null;
+            return p.isEmpty()&&score>=60?best:(score>=150?best:null);
         }catch(Throwable ignored){return null;}
     }
 
-    private void openMusic(String pkg,String track){ openMusic(pkg,track,false,false,false,false); }
+    private void openMusic(String pkg,String track){openMusic(pkg,track,false,false,false,false);}
+
     private void openMusic(String pkg,String track,boolean liked,boolean continuePlay,boolean shuffle,boolean playlist){
         try{
             Intent launch=context.getPackageManager().getLaunchIntentForPackage(pkg);
             if(launch==null){reply("Музыкальное приложение установлено некорректно.");return;}
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(launch);
-            String p=pkg.toLowerCase(Locale.ROOT), tr=track==null?"":track.trim();
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(launch);
+
+            String p=pkg.toLowerCase(Locale.ROOT),tr=track==null?"":track.trim();
             String url=null;
             if(liked){
-                if(p.contains("yandex")) url="https://music.yandex.ru/collection/track-likes";
-                else if(p.contains("com.uma.musicvk")) url="https://vk.com/audio";
-            } else if(playlist){
+                if(p.contains("yandex"))url="https://music.yandex.ru/collection/track-likes";
+                else if(p.contains("com.uma.musicvk"))url="https://vk.com/audio";
+                else if(p.contains("spotify"))url="https://open.spotify.com/collection/tracks";
+                else if(p.contains("youtube"))url="https://music.youtube.com/playlist?list=LM";
+            }else if(playlist){
                 String q=tr.replaceFirst("(?iu)^плейлист\\s*","").trim();
-                if(!q.isEmpty()) url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(q+" плейлист"):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(q+" плейлист"):null;
-            } else if(!tr.isEmpty()){
+                if(!q.isEmpty())url=providerSearchUrl(p,q+" плейлист");
+            }else if(!tr.isEmpty()){
                 String query=tr;
-                String lowTrack=tr.toLowerCase(new Locale("ru"));
-                if(lowTrack.matches(".*(новин|новую музыку|новинки музыки).*")) query="новинки";
-                else if(lowTrack.matches(".*(рок|рэп|хип хоп|поп|электрон|джаз|классическ).*")) query=tr;
-                else if(lowTrack.matches(".*(исполнител|артист).*")) query=tr;
-                url=p.contains("yandex")?"https://music.yandex.ru/search/?text="+Uri.encode(query):p.contains("com.uma.musicvk")?"https://vk.com/audio?q="+Uri.encode(query):"https://www.google.com/search?q="+Uri.encode(query+" музыка");
+                if(query.matches("(?iu).*(новин|новую музыку|новинки музыки).*"))query="новинки";
+                url=providerSearchUrl(p,query);
+            }else if(shuffle){
+                String mode=prefs.getString("music_mode","");
+                if(!mode.isEmpty())url=providerSearchUrl(p,mode);
             }
+
             if(url!=null){
-                try{Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(search);}catch(Throwable ignored){}
+                try{
+                    Intent search=new Intent(Intent.ACTION_VIEW,Uri.parse(url));
+                    search.setPackage(pkg);
+                    search.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(search);
+                }catch(Throwable ignored){
+                    try{context.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Throwable ignored2){}
+                }
             }
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
-                if(shuffle) JarvisMediaSessionService.control("play");
-                else JarvisMediaSessionService.control("play");
-            },900);
-            if(liked) reply("Открываю ваши понравившиеся и продолжаю воспроизведение.");
-            else if(continuePlay) reply("Продолжаю воспроизведение.");
-            else if(shuffle) reply("Включаю музыку в случайном порядке.");
-            else if(!tr.isEmpty()) reply("Открываю поиск музыки: "+tr+".");
-            else reply("Открываю музыкальное приложение.");
+
+            // Give the app time to publish its MediaSession, then issue play.
+            scheduleMediaPlay(1100);
+            if(liked)reply("Открываю понравившуюся музыку в "+providerName(p)+".");
+            else if(continuePlay)reply("Продолжаю воспроизведение.");
+            else if(shuffle)reply("Включаю музыку в режиме "+(prefs.getString("music_mode","случайный выбор"))+".");
+            else if(!tr.isEmpty())reply("Ищу «"+tr+"» и запускаю воспроизведение.");
+            else reply("Открываю музыкальный плеер.");
         }catch(Throwable e){reply("Не удалось открыть музыкальное приложение.");}
+    }
+
+    private String providerSearchUrl(String p,String query){
+        String q=Uri.encode(query==null?"":query);
+        if(p.contains("yandex")&&p.contains("music"))return "https://music.yandex.ru/search/?text="+q;
+        if(p.contains("com.uma.musicvk")||p.contains("vk"))return "https://vk.com/audio?q="+q;
+        if(p.contains("spotify"))return "https://open.spotify.com/search/"+q;
+        if(p.contains("youtube")&&p.contains("music"))return "https://music.youtube.com/search?q="+q;
+        return "https://www.google.com/search?q="+q+"%20музыка";
+    }
+
+    private String providerName(String p){
+        if(p.contains("yandex"))return "Яндекс Музыке";
+        if(p.contains("spotify"))return "Spotify";
+        if(p.contains("youtube"))return "YouTube Music";
+        if(p.contains("vk"))return "VK Музыке";
+        return "выбранном плеере";
     }
 
     private void scheduleMediaPlay(long delay){
@@ -255,6 +453,16 @@ public final class JarvisEngine {
         Matcher m=Pattern.compile("(?iu)(?:в|для|города?|городе)\\s+([А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,}(?:\\s+[А-ЯЁA-Z][А-ЯЁа-яёA-Za-z-]{2,})?)").matcher(x);if(m.find())return m.group(1).trim();return lastCity;
     }
     private void battery(){try{android.os.BatteryManager bm=(android.os.BatteryManager)context.getSystemService(Context.BATTERY_SERVICE);int p=bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);reply("Заряд батареи: "+p+" процентов.");}catch(Throwable e){reply("Не удалось получить уровень заряда.");}}
+    private void learnPreference(String raw,String normalized){
+        String x=JarvisSmartRouter.normalize(raw);
+        try{
+            Matcher m=Pattern.compile("(?iu)^(?:я\\s+)?(?:очень\\s+)?(?:люблю|нравится\\s+мне|мне\\s+нравится)\\s+(.+)$").matcher(x);
+            if(m.find()){String v=m.group(1).trim();if(v.length()>=2&&v.length()<=80)prefs.edit().putString("favorite_preference",v).apply();}
+            m=Pattern.compile("(?iu)^(?:я\\s+)?(?:не\\s+люблю|мне\\s+не\\s+нравится)\\s+(.+)$").matcher(x);
+            if(m.find()){String v=m.group(1).trim();if(v.length()>=2&&v.length()<=80)prefs.edit().putString("disliked_preference",v).apply();}
+        }catch(Throwable ignored){}
+    }
+
     private boolean shouldAutoLearn(String phrase){
         if(phrase==null)return false; String q=JarvisSmartRouter.normalize(phrase);
         if(q.length()<5||q.length()>180)return false;
@@ -266,8 +474,8 @@ public final class JarvisEngine {
         String low=s.toLowerCase(new Locale("ru"));
         boolean failure=low.contains("не удалось")||low.contains("не смог")||low.contains("не наш")||low.contains("не вижу")||low.contains("ошиб")||low.contains("недоступ")||low.contains("не удалось");
         if(!failure && shouldAutoLearn(lastUserMessage)){
-            if(!lastIntentCommand.isEmpty()&&!lastUserMessage.equalsIgnoreCase(lastIntentCommand)) memory.learnSuccessful(lastUserMessage,lastIntentCommand);
-        }
+            if(!lastIntentCommand.isEmpty()&&!lastUserMessage.equalsIgnoreCase(lastIntentCommand)){ memory.learnSuccessful(lastUserMessage,lastIntentCommand); adaptive.learn(lastUserMessage,lastIntentCommand); }
+        } else if(failure && !lastUserMessage.isEmpty()) { adaptive.reject(lastUserMessage); }
         memory.addTurn(lastUserMessage,s);cb.reply(s);
     }
     private void save(String s){if(s.trim().isEmpty()){reply("Что именно сохранить?");return;}String old=prefs.getString("notes","");prefs.edit().putString("notes",old.isEmpty()?"• "+s:old+"\n• "+s).apply();reply("Сохранил в локальную память.");}
@@ -277,6 +485,7 @@ public final class JarvisEngine {
     private void adjustVolume(String c){AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);if(c.contains("увелич")||c.contains("громче")){am.adjustVolume(AudioManager.ADJUST_RAISE,AudioManager.FLAG_SHOW_UI);reply("Громкость увеличена.");}else if(c.contains("умень")||c.contains("тише")){am.adjustVolume(AudioManager.ADJUST_LOWER,AudioManager.FLAG_SHOW_UI);reply("Громкость уменьшена.");}else reply("Скажите: громче или тише.");}
     private void launchNamedApp(String original,String normalized,String hint,String... packagesAndAnswer){
         String answer=packagesAndAnswer[packagesAndAnswer.length-1];
+        if(isLocked()){reply("Сэр, чтобы открыть приложение, сначала разблокируйте телефон.");return;}
         for(int i=0;i<packagesAndAnswer.length-1;i++){
             String pkg=packagesAndAnswer[i]; if(pkg==null||pkg.trim().isEmpty())continue;
             try{
@@ -292,10 +501,11 @@ public final class JarvisEngine {
     private boolean bridgeLaunch(String pkg){
         try{Intent bridge=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);bridge.putExtra("LAUNCH_PACKAGE",pkg);context.startActivity(bridge);return true;}catch(Throwable ignored){return false;}
     }
-    private boolean launchInstalledApp(String original,String normalized){try{PackageManager pm=context.getPackageManager();Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);String q=normalized.replaceFirst("(?iu)^(открой|запусти|включи|открывай|запускай|зайди в)\\s+","").replaceFirst("(?iu)^приложение\\s+","").trim();if(q.isEmpty())return false;android.content.pm.ResolveInfo best=null;int score=0;for(android.content.pm.ResolveInfo ri:apps){if(ri.activityInfo==null||context.getPackageName().equals(ri.activityInfo.packageName))continue;String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);String qq=q.replace('ё','е');int sc=0;if(label.equals(qq))sc=120;else if(label.contains(qq)||qq.contains(label))sc=85;for(String w:qq.split("\\s+"))if(w.length()>2&&label.contains(w))sc+=18;if(pkg.contains(qq.replace(' ','.')))sc+=30;if(sc>score){score=sc;best=ri;}}if(best!=null&&score>=35){Intent launch=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{context.startActivity(launch);memory.remember("last_app",best.activityInfo.packageName);reply("Открываю "+best.loadLabel(pm)+".");return true;}catch(Throwable blocked){if(bridgeLaunch(best.activityInfo.packageName)){reply("Открываю "+best.loadLabel(pm)+".");return true;}}}}catch(Throwable ignored){}return false;}
+    private boolean launchInstalledApp(String original,String normalized){if(isLocked()){reply("Сэр, открытие приложений с экрана блокировки требует разблокировки.");return true;}try{PackageManager pm=context.getPackageManager();Intent probe=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);List<android.content.pm.ResolveInfo> apps=pm.queryIntentActivities(probe,PackageManager.MATCH_ALL);String q=normalized.replaceFirst("(?iu)^(открой|запусти|включи|открывай|запускай|зайди в)\\s+","").replaceFirst("(?iu)^приложение\\s+","").trim();if(q.isEmpty())return false;android.content.pm.ResolveInfo best=null;int score=0;for(android.content.pm.ResolveInfo ri:apps){if(ri.activityInfo==null||context.getPackageName().equals(ri.activityInfo.packageName))continue;String label=String.valueOf(ri.loadLabel(pm)).toLowerCase(new Locale("ru")).replace('ё','е');String pkg=ri.activityInfo.packageName.toLowerCase(Locale.ROOT);String qq=q.replace('ё','е');int sc=0;if(label.equals(qq))sc=120;else if(label.contains(qq)||qq.contains(label))sc=85;for(String w:qq.split("\\s+"))if(w.length()>2&&label.contains(w))sc+=18;if(pkg.contains(qq.replace(' ','.')))sc+=30;if(sc>score){score=sc;best=ri;}}if(best!=null&&score>=35){Intent launch=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(new ComponentName(best.activityInfo.packageName,best.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{context.startActivity(launch);memory.remember("last_app",best.activityInfo.packageName);reply("Открываю "+best.loadLabel(pm)+".");return true;}catch(Throwable blocked){if(bridgeLaunch(best.activityInfo.packageName)){reply("Открываю "+best.loadLabel(pm)+".");return true;}}}}catch(Throwable ignored){}return false;}
     private void dial(String raw){String d=raw.replaceAll("[^0-9+]","");if(d.length()<5){reply("Назовите номер телефона.");return;}open(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+d)),"Открываю набор номера.");}
     private void sms(String raw){String d=raw.replaceAll("[^0-9+]","");Intent i=new Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:"+d));i.putExtra("sms_body",raw);open(i,"Открываю сообщения.");}
-    private void open(Intent i,String answer){try{i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(i);reply(answer);}catch(Throwable e){reply("Не удалось открыть системное действие.");}}
+    private boolean isLocked(){try{android.app.KeyguardManager km=(android.app.KeyguardManager)context.getSystemService(Context.KEYGUARD_SERVICE);return km!=null&&km.isKeyguardLocked();}catch(Throwable e){return false;}}
+    private void open(Intent i,String answer){if(isLocked()){reply("Сэр, для открытия этого экрана разблокируйте телефон. Голосовые и медиакоманды продолжают работать с экрана блокировки.");return;}try{i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(i);reply(answer);}catch(Throwable e){reply("Не удалось открыть системное действие.");}}
     public void shutdown(){web.shutdown();video.shutdown();}
 
     static final class TimerTool {private static final int TIMER_ID=78;static void start(Context c,int seconds,Callback cb){if(seconds<=0){cb.reply("Не удалось определить длительность таймера.");return;}try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);long at=System.currentTimeMillis()+seconds*1000L;if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){c.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+c.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));cb.reply("Android требует разрешение на точные будильники. После выдачи разрешения повторите команду.");return;}if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);else am.setExact(AlarmManager.RTC_WAKEUP,at,pi);c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().putLong("end",at).putInt("seconds",seconds).apply();cb.reply("Таймер установлен на "+format(seconds)+".");}catch(Throwable e){cb.reply("Не удалось установить таймер. Проверьте разрешение на точные будильники.");}}static void cancel(Context c,Callback cb){try{AlarmManager am=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);Intent i=new Intent(c,AlarmReceiver.class).setAction("JARVIS_TIMER");PendingIntent pi=PendingIntent.getBroadcast(c,TIMER_ID,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(pi);pi.cancel();c.getSharedPreferences("jarvis_timer",Context.MODE_PRIVATE).edit().clear().apply();cb.reply("Таймер отменён.");}catch(Throwable e){cb.reply("Не удалось отменить таймер.");}}static String format(int s){if(s>=3600)return(s/3600)+" ч";if(s%60==0)return(s/60)+" мин";return s+" сек";}}

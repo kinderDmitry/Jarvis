@@ -1,50 +1,125 @@
 package com.jarvis.homemultitool;
 
 import android.content.ComponentName;
-import android.media.session.MediaController;
-import android.media.Rating;
 import android.media.MediaMetadata;
+import android.media.Rating;
+import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
-/** Gives JARVIS access to active media sessions after the user grants notification-listener access. */
+/**
+ * System-wide media bridge.
+ *
+ * It deliberately uses Android MediaSession instead of hard-coding a single
+ * music provider. Any player that exposes a media session can be controlled:
+ * music, podcasts, radio, video and other media apps.
+ */
 public final class JarvisMediaSessionService extends NotificationListenerService {
-    private static JarvisMediaSessionService instance;
+    private static volatile JarvisMediaSessionService instance;
+
     @Override public void onListenerConnected(){instance=this;}
     @Override public void onListenerDisconnected(){if(instance==this)instance=null;}
     @Override public void onNotificationPosted(StatusBarNotification s){}
     @Override public void onNotificationRemoved(StatusBarNotification s){}
 
     public static boolean isConnected(){return instance!=null;}
-    public static boolean control(String command){
+
+    private static List<MediaController> controllers(){
         JarvisMediaSessionService s=instance;
-        if(s==null)return false;
+        if(s==null)return new ArrayList<>();
         try{
             MediaSessionManager msm=(MediaSessionManager)s.getSystemService(MEDIA_SESSION_SERVICE);
+            if(msm==null)return new ArrayList<>();
             List<MediaController> list=msm.getActiveSessions(new ComponentName(s,s.getClass()));
-            if(list==null||list.isEmpty())return false;
-            for(MediaController c:list){
-                MediaController.TransportControls t=c.getTransportControls();
-                if("play".equals(command))t.play();
-                else if("pause".equals(command))t.pause();
-                else if("next".equals(command))t.skipToNext();
-                else if("previous".equals(command))t.skipToPrevious();
-                else return false;
-                return true;
-            }
-        }catch(Throwable ignored){}
-        return false;
+            return list==null?new ArrayList<>():new ArrayList<>(list);
+        }catch(Throwable ignored){return new ArrayList<>();}
     }
 
-    public static final class TrackInfo { public final String title,artist; TrackInfo(String t,String a){title=t;artist=a;} }
-    public static TrackInfo currentTrack(){
-        JarvisMediaSessionService s=instance; if(s==null)return null;
-        try{MediaSessionManager msm=(MediaSessionManager)s.getSystemService(MEDIA_SESSION_SERVICE); List<MediaController> list=msm.getActiveSessions(new ComponentName(s,s.getClass())); if(list==null||list.isEmpty())return null; MediaMetadata m=list.get(0).getMetadata(); if(m==null)return null; String t=m.getString(MediaMetadata.METADATA_KEY_TITLE); String a=m.getString(MediaMetadata.METADATA_KEY_ARTIST); if(t==null||t.isEmpty())return null; return new TrackInfo(t,a==null?"":a);}catch(Throwable ignored){return null;}
+    /** Prefer a playing session, then a paused session, then the first active session. */
+    private static MediaController bestController(String preferredPackage){
+        List<MediaController> list=controllers();
+        MediaController fallback=null;
+        for(MediaController c:list){
+            if(c==null)continue;
+            if(preferredPackage!=null&&!preferredPackage.isEmpty() &&
+                    preferredPackage.equalsIgnoreCase(c.getPackageName())) return c;
+            if(fallback==null)fallback=c;
+            PlaybackState ps=c.getPlaybackState();
+            if(ps!=null && ps.getState()==PlaybackState.STATE_PLAYING){
+                if(preferredPackage==null||preferredPackage.isEmpty()) return c;
+                if(c.getPackageName().toLowerCase(Locale.ROOT).contains(preferredPackage.toLowerCase(Locale.ROOT))) return c;
+            }
+        }
+        return fallback;
     }
+
+    public static String activePackage(){
+        MediaController c=bestController("");
+        return c==null?"":c.getPackageName();
+    }
+
+    public static boolean control(String command){return control(command,"");}
+
+    /** Controls the best active media session, regardless of the provider. */
+    public static boolean control(String command,String preferredPackage){
+        MediaController c=bestController(preferredPackage);
+        if(c==null)return false;
+        try{
+            MediaController.TransportControls t=c.getTransportControls();
+            if(t==null)return false;
+            String a=command==null?"":command.toLowerCase(Locale.ROOT);
+            if("play".equals(a)||"resume".equals(a))t.play();
+            else if("pause".equals(a)||"stop".equals(a))t.pause();
+            else if("next".equals(a))t.skipToNext();
+            else if("previous".equals(a))t.skipToPrevious();
+            else if("rewind".equals(a))t.rewind();
+            else if("fast_forward".equals(a))t.fastForward();
+            else return false;
+            return true;
+        }catch(Throwable ignored){return false;}
+    }
+
+    public static final class TrackInfo {
+        public final String title,artist,album,packageName;
+        TrackInfo(String t,String a,String al,String p){title=t;artist=a;album=al;packageName=p;}
+    }
+
+    public static TrackInfo currentTrack(){
+        MediaController c=bestController("");
+        if(c==null)return null;
+        try{
+            MediaMetadata m=c.getMetadata();
+            if(m==null)return null;
+            String t=m.getString(MediaMetadata.METADATA_KEY_TITLE);
+            String a=m.getString(MediaMetadata.METADATA_KEY_ARTIST);
+            String al=m.getString(MediaMetadata.METADATA_KEY_ALBUM);
+            if(t==null||t.trim().isEmpty())return null;
+            return new TrackInfo(t,a==null?"":a,al==null?"":al,c.getPackageName());
+        }catch(Throwable ignored){return null;}
+    }
+
     public static boolean rateCurrent(boolean like){
-        JarvisMediaSessionService s=instance; if(s==null)return false;
-        try{MediaSessionManager msm=(MediaSessionManager)s.getSystemService(MEDIA_SESSION_SERVICE); List<MediaController> list=msm.getActiveSessions(new ComponentName(s,s.getClass())); if(list==null||list.isEmpty())return false; MediaController.TransportControls t=list.get(0).getTransportControls(); t.setRating(Rating.newThumbRating(like)); return true;}catch(Throwable ignored){return false;}
+        MediaController c=bestController("");
+        if(c==null)return false;
+        try{
+            PlaybackState ps=c.getPlaybackState();
+            if(ps!=null && (ps.getActions() & PlaybackState.ACTION_SET_RATING)==0)return false;
+            c.getTransportControls().setRating(Rating.newThumbRating(like));
+            return true;
+        }catch(Throwable ignored){return false;}
+    }
+
+    public static boolean isPlaying(){
+        MediaController c=bestController("");
+        if(c==null)return false;
+        try{
+            PlaybackState ps=c.getPlaybackState();
+            return ps!=null && ps.getState()==PlaybackState.STATE_PLAYING;
+        }catch(Throwable ignored){return false;}
     }
 }

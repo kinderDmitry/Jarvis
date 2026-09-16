@@ -105,7 +105,7 @@ public class JarvisWakeWordService extends Service {
         }
     }
 
-    private void speak(String s){if(voice==null){processing=false;rearm(250);return;}if(!voice.isReady()){handler.postDelayed(()->speak(s),500);return;}voice.speak(s,new UtteranceProgressListener(){public void onStart(String id){}public void onDone(String id){processing=false;rearm(350);}public void onError(String id){processing=false;rearm(350);}});}
+    private void speak(String s){if(voice==null){processing=false;rearm(250);return;}if(!voice.isReady()){handler.postDelayed(()->{if(processing&&!voice.isReady()){processing=false;rearm(250);}else speak(s);},1200);return;}voice.speak(s,new UtteranceProgressListener(){public void onStart(String id){}public void onDone(String id){processing=false;rearm(350);}public void onError(String id){processing=false;rearm(350);}});}
     private void rearm(long delay){if(!running||processing)return;handler.postDelayed(()->{if(!running||processing)return;createRecognizer();startListening(100);},delay);}
     private void startListening(long delay){if(!running||processing)return;handler.postDelayed(()->{if(!running||processing||recognizer==null||listening)return;try{recognizer.cancel();recognizer.startListening(intent);}catch(Throwable e){rearm(1000);}},delay);}
     @Override public int onStartCommand(Intent i,int flags,int id){return START_STICKY;}
