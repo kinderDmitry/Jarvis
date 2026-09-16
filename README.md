@@ -46,7 +46,7 @@ This revision adds a dependency-free adaptive semantic brain on top of the real 
 - Release CI verifies the APK and checks that no forbidden `keySet()` pattern remains.
 
 
-## JARVIS 5.40.0 Professional AI — media and adaptive control
+## JARVIS 5.42.0 Professional AI — media and adaptive control
 
 This revision keeps the existing local-first architecture and adds a provider-neutral media control layer.
 
@@ -66,4 +66,8 @@ No third-party Android application can guarantee starting an arbitrary song insi
 The project continues to support the Android Assistant/VoiceInteractionService path and a foreground microphone service. Android does not expose an unrestricted, battery-free third-party hotword API to ordinary applications; the implementation therefore does not claim guaranteed always-on hotword recognition on every device.
 
 ### Release
-Version: `5.40.0-professional-ai`
+Version: `5.42.0-professional-ai`
+
+
+## 5.43.0 — Interval Timer
+Добавлен постоянный интервальный таймер: «каждые 10 минут», «повторяй каждые 30 минут», «интервальный таймер на 5 минут». Таймер повторно планирует следующее событие после каждого срабатывания и восстанавливается после BOOT_COMPLETED. Остановка: «останови интервальный таймер».
