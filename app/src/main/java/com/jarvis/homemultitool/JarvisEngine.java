@@ -17,6 +17,7 @@ import java.util.regex.*;
 public final class JarvisEngine {
     public interface Callback { void reply(String text); void state(String state); }
     private final Context context; private final Callback cb; private final SharedPreferences prefs; private final WebSearchEngine web=new WebSearchEngine(); private final JarvisMemory memory; private final JarvisAdaptiveBrain adaptive; private final VideoSearchEngine video=new VideoSearchEngine(); private final JarvisLocalAI localAI=new JarvisLocalAI();
+    private final JarvisOrchestrator orchestrator;
     private String lastCity="Москва", lastTopic="", lastUserMessage="";
     private String previousUserMessage="";
     private boolean executingLearned=false;
@@ -24,11 +25,19 @@ public final class JarvisEngine {
     private String pendingMusicTrack="";
     private String pendingMusicApp="";
     private String lastIntentCommand="";
-    public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);memory=new JarvisMemory(context);adaptive=new JarvisAdaptiveBrain(context);}
+    public JarvisEngine(Context c,Callback callback){context=c.getApplicationContext();cb=callback;prefs=context.getSharedPreferences("jarvis_local",Context.MODE_PRIVATE);memory=new JarvisMemory(context);adaptive=new JarvisAdaptiveBrain(context);orchestrator=new JarvisOrchestrator(context);}
 
     public void handle(final String raw){
-        try { handleInternal(raw); } catch (Throwable fatal) { cb.state("ГОТОВ"); cb.reply("Я не смог безопасно выполнить эту команду. Попробуйте сказать её иначе."); }
+        try { if(orchestrator.tryHandle(raw,this)) return; handleInternal(raw); } catch (Throwable fatal) { cb.state("ГОТОВ"); cb.reply("Я не смог безопасно выполнить эту команду. Попробуйте сказать её иначе."); }
     }
+
+    /** Package-private bridge used only by the orchestrator for already-planned steps. */
+    void handlePlannedStep(String step){
+        if(step==null||step.trim().isEmpty()) return;
+        handleInternal(step.trim());
+    }
+    void externalState(String state){ cb.state(state); }
+    void externalReply(String text){ cb.reply(text); }
 
     private void handleInternal(final String raw){
         if(raw==null||raw.trim().isEmpty())return;
