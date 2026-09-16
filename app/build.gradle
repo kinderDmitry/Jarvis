@@ -15,8 +15,8 @@ android {
         applicationId 'com.jarvis.homemultitool'
         minSdk 26
         targetSdk 35
-        versionCode 34
-        versionName '5.31.8-smart-assistant'
+        versionCode 40
+        versionName '5.40.0-professional-ai'
     }
     buildTypes {
         release {
