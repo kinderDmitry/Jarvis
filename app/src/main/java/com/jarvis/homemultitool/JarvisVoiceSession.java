@@ -51,7 +51,7 @@ public class JarvisVoiceSession extends android.service.voice.VoiceInteractionSe
         public void onRmsChanged(float v){}public void onBufferReceived(byte[] b){}
         public void onEndOfSpeech(){listening=false;main.post(()->status.setText("ОБРАБОТКА"));}
         public void onError(int e){listening=false;if(active)main.postDelayed(()->{if(active)startRecognition();},500);}
-        public void onResults(Bundle b){ArrayList<String> r=b==null?null:b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(r!=null&&!r.isEmpty()){String q=r.get(0);main.post(()->transcript.setText(q));if(engine!=null)engine.handle(q);}listening=false;}
+        public void onResults(Bundle b){ArrayList<String> r=b==null?null:b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(r!=null&&!r.isEmpty()){String q=r.get(0);main.post(()->transcript.setText(q));if(engine!=null)engine.handle(q);}listening=false;if(active)main.postDelayed(()->{if(active&&!listening)startRecognition();},650);}
         public void onPartialResults(Bundle b){}
         public void onEvent(int a,Bundle b){}
     };

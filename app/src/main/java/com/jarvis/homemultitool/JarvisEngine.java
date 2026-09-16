@@ -204,16 +204,31 @@ public final class JarvisEngine {
 
         prefs.edit().putString("preferred_music_app",providerKey(pkg)).apply();
 
-        // IMPORTANT: never open a search page before trying the media session.
-        // This was the source of the old behaviour where "включи музыку" or
-        // "включи понравившиеся" opened a search screen instead of playback.
+        // IMPORTANT: a personal collection is NOT a generic media search.
+        // Yandex Music interprets a generic/empty playFromSearch request as a
+        // recommendation/radio request (often "Моя волна"). For phrases such
+        // as "включи понравившиеся песни" we therefore use the provider's
+        // actual "Мне нравится" collection entry first, and only fall back to
+        // the media session if the deep link cannot be handled.
         String query=track==null?"":track.trim();
         if(shuffle && !mode.isEmpty()) query=mode;
         if(liked) query="";
 
-        // Standard Android voice/media route. For "music" an empty query asks
-        // the player for any music. Providers that support richer voice search
-        // can resolve artist/track/mode queries directly.
+        if(liked && pkg.toLowerCase(Locale.ROOT).contains("yandex")){
+            if(openYandexLikedCollection(pkg)){
+                reply("Включаю понравившиеся песни в Яндекс Музыке.");
+                return;
+            }
+            // Do not send an empty playFromSearch() request to Yandex here:
+            // that is precisely the route that can start "Моя волна".
+            launchMusicApp(pkg);
+            retryYandexLiked(pkg,0);
+            return;
+        }
+
+        // Standard Android media route for generic music and named tracks.
+        // An empty query is intentionally used ONLY for generic "включи музыку"
+        // requests, never for the explicit liked collection.
         if(JarvisMediaSessionService.playFromSearch(query,pkg)){
             reply(liked?"Включаю понравившуюся музыку в "+providerName(pkg)+".":
                     query.isEmpty()?"Включаю музыку в "+providerName(pkg)+".":
@@ -226,6 +241,44 @@ public final class JarvisEngine {
         launchMusicApp(pkg);
         final String finalPkg=pkg, finalQuery=query;
         retryMediaPlay(finalPkg,finalQuery,liked,0);
+    }
+
+
+    private boolean openYandexLikedCollection(String pkg){
+        try{
+            // Yandex documents that liked tracks live in the Collection playlist
+            // "Мне нравится". The HTTPS collection URL is preferable to the old
+            // yandexmusic: URI because current Android builds can resolve the
+            // signed web link directly into the installed Yandex Music app.
+            Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse("https://music.yandex.ru/collection/track-likes"));
+            i.setPackage(pkg);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(i);
+            return true;
+        }catch(Throwable ignored){}
+        try{
+            Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse("yandexmusic://collection/track-likes"));
+            i.setPackage(pkg);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(i);
+            return true;
+        }catch(Throwable ignored){}
+        return false;
+    }
+
+    private void retryYandexLiked(final String pkg, final int attempt){
+        final long[] delays={700L,1600L,3000L,5500L};
+        if(attempt>=delays.length){
+            // Never replace an explicit liked-collection request with a search
+            // or My Vibe request. Report the real limitation instead.
+            reply("Яндекс Музыка не дала открыть плейлист «Мне нравится» напрямую. Откройте Коллекцию и дайте JARVIS доступ к медиасеансам.");
+            return;
+        }
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{
+            if(openYandexLikedCollection(pkg)){
+                reply("Включаю понравившиеся песни в Яндекс Музыке.");
+            }else retryYandexLiked(pkg,attempt+1);
+        },delays[attempt]);
     }
 
     private void launchMusicApp(String pkg){
@@ -464,6 +517,20 @@ public final class JarvisEngine {
     }
 
     private void handleMediaControl(String c){
+        if(c.matches(".*\\b(перемешай|включи перемешивание|режим shuffle|shuffle)\\b.*")){
+            boolean ok=JarvisMediaSessionService.setShuffle(true,""); reply(ok?"Включил перемешивание.":"Активный плеер не поддерживает управление перемешиванием."); return;
+        }
+        if(c.matches(".*\\b(выключи перемешивание|отключи shuffle)\\b.*")){
+            boolean ok=JarvisMediaSessionService.setShuffle(false,""); reply(ok?"Выключил перемешивание.":"Активный плеер не поддерживает управление перемешиванием."); return;
+        }
+        if(c.matches(".*\\b(повтори песню|повтор текущей|повтор трека)\\b.*")){
+            boolean ok=JarvisMediaSessionService.setRepeat(android.media.session.PlaybackState.REPEAT_MODE_ONE,""); reply(ok?"Включил повтор текущего трека.":"Активный плеер не поддерживает повтор."); return;
+        }
+        if(c.matches(".*\\b(повторяй плейлист|повтор плейлиста|повтор всего)\\b.*")){
+            boolean ok=JarvisMediaSessionService.setRepeat(android.media.session.PlaybackState.REPEAT_MODE_ALL,""); reply(ok?"Включил повтор плейлиста.":"Активный плеер не поддерживает повтор."); return;
+        }
+        Matcher seek=Pattern.compile("(?iu)(?:перемотай|перемотать|промотай)\\s+(?:на\\s+)?(\\d+)\\s*(секунд|сек|минут|мин)").matcher(c);
+        if(seek.find()){ long n=Long.parseLong(seek.group(1)); if(seek.group(2).startsWith("мин"))n*=60; boolean ok=JarvisMediaSessionService.seekRelative(n*1000L,""); reply(ok?"Перемотал вперёд на "+(seek.group(1))+" "+seek.group(2)+".":"Плеер не поддерживает перемотку."); return; }
         String action;
         if(c.contains("пауза")||c.contains("стоп")) action="pause";
         else if(c.contains("предыдущ")||c.contains("назад")||c.contains("верни песню")) action="previous";

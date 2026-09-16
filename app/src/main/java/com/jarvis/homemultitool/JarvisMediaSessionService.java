@@ -133,6 +133,24 @@ public final class JarvisMediaSessionService extends NotificationListenerService
         }catch(Throwable ignored){return false;}
     }
 
+    public static boolean setShuffle(boolean enabled, String preferredPackage){
+        MediaController c=bestController(preferredPackage);
+        if(c==null || android.os.Build.VERSION.SDK_INT<26)return false;
+        try{ c.getTransportControls().setShuffleMode(enabled?PlaybackState.SHUFFLE_MODE_ALL:PlaybackState.SHUFFLE_MODE_NONE); return true; }catch(Throwable ignored){return false;}
+    }
+
+    public static boolean setRepeat(int mode, String preferredPackage){
+        MediaController c=bestController(preferredPackage);
+        if(c==null || android.os.Build.VERSION.SDK_INT<26)return false;
+        try{ c.getTransportControls().setRepeatMode(mode); return true; }catch(Throwable ignored){return false;}
+    }
+
+    public static boolean seekRelative(long deltaMs, String preferredPackage){
+        MediaController c=bestController(preferredPackage);
+        if(c==null)return false;
+        try{ PlaybackState ps=c.getPlaybackState(); long pos=ps==null?0:Math.max(0,ps.getPosition()); c.getTransportControls().seekTo(Math.max(0,pos+deltaMs)); return true; }catch(Throwable ignored){return false;}
+    }
+
     public static boolean isPlaying(){
         MediaController c=bestController("");
         if(c==null)return false;
